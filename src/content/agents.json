@@ -1,0 +1,1589 @@
+[
+  {
+    "id": "agents-agents-workflows",
+    "module": "agents",
+    "section": "Agent foundations",
+    "title": "Choose an agent or a workflow",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain choose an agent or a workflow in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A workflow follows an application-defined sequence of steps. An agent chooses its next action from observations, often using a model to select tools or decide when to stop. Both can use language models, and a model call alone does not make a system an agent. The distinction is where control decisions live and how much flexibility the task actually needs.\n\nPredictable tasks often benefit from a workflow because its states and failure paths are easy to test. Open-ended tasks may need adaptive action selection, but that flexibility increases the number of possible trajectories. Start with the smallest control structure that solves the problem. In this module, policy decisions are explicitly simulated with Python rules so execution remains free and deterministic. Those rules teach orchestration mechanics without claiming to reproduce a model's reasoning or intelligence.",
+    "why": "A data-extraction service with fixed validation steps rarely needs autonomous tool choice, while an investigation assistant may need to adapt after each observation. Choosing the control structure deliberately avoids unnecessary complexity and makes reliability requirements concrete before adding a model.",
+    "example": {
+      "code": "task = {\"fixed_steps\":True,\"needs_adaptation\":False}\npattern = \"workflow\" if task[\"fixed_steps\"] else \"agent\"\nprint(pattern)",
+      "explanation": "The example treats predictable control flow as a reason to choose a workflow. Real design decisions also consider uncertainty, risk, and evaluation cost. The point is to make the choice explicit: a language-model component can sit inside a workflow without gaining authority to choose arbitrary actions or change the sequence."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Using an LLM inside a fixed sequence automatically makes an agent.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "An agent selects actions based on observations; an LLM call alone does not define one."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement choose_pattern(fixed_steps,needs_adaptation). Return \"agent\" when adaptation is required; otherwise \"workflow\". The fixed_steps flag is descriptive and does not override an explicit adaptation requirement.",
+      "starter": "def choose_pattern(fixed_steps,needs_adaptation):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def choose_pattern(fixed_steps,needs_adaptation):\n    return \"agent\" if needs_adaptation else \"workflow\"\n",
+      "solutionExplanation": "An agent selects actions based on observations; an LLM call alone does not define one. Branch on needs_adaptation and keep the policy deterministic. Do not add autonomy merely because a model is available.",
+      "tests": [
+        {
+          "name": "Adaptive",
+          "code": "assert choose_pattern(False,True) == \"agent\"",
+          "explanation": "Adaptive action choice favors an agent."
+        },
+        {
+          "name": "Fixed",
+          "code": "assert choose_pattern(True,False) == \"workflow\"",
+          "explanation": "Predictable flow stays explicit."
+        },
+        {
+          "name": "Conflict",
+          "code": "assert choose_pattern(True,True) == \"agent\"",
+          "explanation": "The explicit adaptation requirement takes precedence."
+        }
+      ],
+      "hints": [
+        "An agent selects actions based on observations; an LLM call alone does not define one.",
+        "Branch on needs_adaptation and keep the policy deterministic."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not add autonomy merely because a model is available.",
+      "Do not describe simulated policy rules as executed model reasoning."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "architecture"
+    ]
+  },
+  {
+    "id": "agents-tool-schemas",
+    "module": "agents",
+    "section": "Tools and control",
+    "title": "Describe a tool with a schema",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-agents-workflows"
+    ],
+    "objectives": [
+      "Explain describe a tool with a schema in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A tool schema tells a caller what an operation is named, what arguments it accepts, and which fields are required. JSON Schema commonly describes objects, strings, numbers, arrays, and constraints. A clear description helps a model select a tool, but the schema is also an application contract that must be enforced before execution.\n\nConsider a search tool taking query and limit. The name should identify behavior, query should be a string, and limit should have a documented range. Reject unexpected fields rather than letting them silently change behavior. A schema is not authorization: a valid argument may still request data the user cannot access. Keep validation, permission checks, and execution as separate boundaries. In this lesson we construct a small schema dictionary using Python, which can later be serialized for a tool-calling API.",
+    "why": "Tool descriptions sit at the boundary between uncertain model output and deterministic software. Explicit schemas reduce malformed calls, improve integration tests, and help reviewers understand what data or actions a tool can access before an agent is allowed to invoke it.",
+    "example": {
+      "code": "schema = {\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"additionalProperties\":False}\nprint(schema[\"required\"])",
+      "explanation": "The properties mapping names allowed fields and their types, while required states which fields cannot be omitted. Disabling additional properties makes typos visible rather than silently ignored. This dictionary describes a contract; it does not execute validation by itself, so a separate validator must still check actual incoming arguments."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does required describe?",
+      "options": [
+        "Fields that must be present",
+        "Fields with administrator access",
+        "Fields that execute automatically"
+      ],
+      "answer": "Fields that must be present",
+      "explanation": "Required lists the fields that must exist in a valid argument object."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement search_schema(). Return a JSON Schema object with type object, properties query:string and limit:integer with minimum 1 and maximum 10, required [\"query\"], and additionalProperties False.",
+      "starter": "def search_schema():\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def search_schema():\n    return {\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":10}},\"required\":[\"query\"],\"additionalProperties\":False}\n",
+      "solutionExplanation": "Required lists the fields that must exist in a valid argument object. Build nested dictionaries for object properties, required names, and additionalProperties. Do not mistake a schema for an authorization policy.",
+      "tests": [
+        {
+          "name": "Required",
+          "code": "assert search_schema()[\"required\"] == [\"query\"]",
+          "explanation": "Query is mandatory."
+        },
+        {
+          "name": "Bounds",
+          "code": "assert search_schema()[\"properties\"][\"limit\"] == {\"type\":\"integer\",\"minimum\":1,\"maximum\":10}",
+          "explanation": "Limits are explicit."
+        },
+        {
+          "name": "Unknown fields",
+          "code": "assert search_schema()[\"additionalProperties\"] is False",
+          "explanation": "Unexpected arguments are disallowed."
+        }
+      ],
+      "hints": [
+        "Required lists the fields that must exist in a valid argument object.",
+        "Build nested dictionaries for object properties, required names, and additionalProperties."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not mistake a schema for an authorization policy.",
+      "Do not assume constructing a schema automatically validates input."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "schemas"
+    ]
+  },
+  {
+    "id": "agents-arguments",
+    "module": "agents",
+    "section": "Tools and control",
+    "title": "Validate structured arguments",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-tool-schemas"
+    ],
+    "objectives": [
+      "Explain validate structured arguments in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Model-produced arguments are untrusted input even when they look like valid JSON. Parsing checks syntax; application validation checks shape, types, ranges, and allowed fields. A search request containing a list instead of an object should fail before tool execution. The same is true of a negative result limit or an empty query.\n\nPython has a subtle type issue: bool is a subclass of int, so isinstance(True, int) returns true. For a strict integer contract, use type(value) is int or explicitly exclude booleans. Normalize only transformations authorized by the contract, such as trimming query whitespace and supplying a default limit. Return a new dictionary so caller-owned input remains unchanged. Validation errors should be clear enough for a retry policy to repair arguments without leaking private application details.",
+    "why": "An agent can produce syntactically valid yet operationally invalid calls. Validating arguments before execution prevents accidental large requests and confusing tool failures, while deterministic defaults and normalization make simulated and real-model callers behave consistently under the same application contract.",
+    "example": {
+      "code": "print(isinstance(True,int))  # True\nvalue = 3\nprint(type(value) is int)  # strict integer check",
+      "explanation": "Python's inheritance rules explain why a generic integer check can accidentally accept a boolean. A JSON tool contract often distinguishes these types, so validation should reflect that distinction. The exercise combines strict typing with range, required-field, and unknown-field checks before returning normalized arguments for safe dispatch."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Is True accepted by isinstance(True,int)?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "Yes",
+      "explanation": "Python treats bool as an int subclass, so strict contracts need an exact-type check."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement validate_search(args). Require a dict with only query and optional limit. query must be a nonblank string; trim it. limit defaults to 3 and must have exact type int in 1..10. Return normalized dict; raise ValueError for invalid input.",
+      "starter": "def validate_search(args):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def validate_search(args):\n    if not isinstance(args,dict) or set(args)-{\"query\",\"limit\"}:\n        raise ValueError(\"Invalid fields\")\n    query, limit = args.get(\"query\"), args.get(\"limit\",3)\n    if not isinstance(query,str) or not query.strip():\n        raise ValueError(\"query must be nonblank\")\n    if type(limit) is not int or not 1 <= limit <= 10:\n        raise ValueError(\"limit must be integer 1..10\")\n    return {\"query\":query.strip(),\"limit\":limit}\n",
+      "solutionExplanation": "Python treats bool as an int subclass, so strict contracts need an exact-type check. Validate keys first, then query and limit, and construct a normalized output dictionary. Do not execute tools immediately after json.loads without validation.",
+      "tests": [
+        {
+          "name": "Default",
+          "code": "assert validate_search({\"query\":\" api \"}) == {\"query\":\"api\",\"limit\":3}",
+          "explanation": "Normalization and defaults are explicit."
+        },
+        {
+          "name": "Boolean",
+          "code": "try:\n    validate_search({\"query\":\"api\",\"limit\":True})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Booleans are not strict integer limits."
+        },
+        {
+          "name": "Unknown",
+          "code": "try:\n    validate_search({\"query\":\"api\",\"admin\":True})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Unknown fields cannot silently change behavior."
+        }
+      ],
+      "hints": [
+        "Python treats bool as an int subclass, so strict contracts need an exact-type check.",
+        "Validate keys first, then query and limit, and construct a normalized output dictionary."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not execute tools immediately after json.loads without validation.",
+      "Do not accept booleans as numeric limits accidentally."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "validation"
+    ]
+  },
+  {
+    "id": "agents-dispatch",
+    "module": "agents",
+    "section": "Tools and control",
+    "title": "Execute only registered tools",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-arguments"
+    ],
+    "objectives": [
+      "Explain execute only registered tools in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A dispatcher connects a validated tool name to an application-owned callable. Use an explicit registry rather than evaluating model-provided Python code or importing arbitrary modules. A tool call is data describing an allowed operation, not permission to execute unrestricted code. Unknown names should produce a controlled error.\n\nKeep dispatch separate from validation and authorization. A registered tool might still require per-user permission or human approval before a side effect. For this exercise, both tools are pure functions: add combines two numbers and upper transforms text. Their registry makes the allowed capability set visible. Return a structured observation containing success and result, or success false and an error category. Do not swallow every exception without a trace in production; expected failures and programming defects need different handling and observability.",
+    "why": "Tool execution is where model suggestions become software behavior. An explicit registry prevents arbitrary code execution and gives engineers a small capability surface to test, document, and authorize before an agent gains access to file writes, network calls, or external systems.",
+    "example": {
+      "code": "registry = {\"upper\":lambda text:text.upper()}\nname, args = \"upper\", {\"text\":\"hello\"}\nprint(registry[name](**args))  # HELLO",
+      "explanation": "The registry maps a known string to a callable supplied by the application. Keyword unpacking passes structured arguments rather than constructing executable source code. The example assumes prior validation; a complete boundary must reject unknown names and malformed arguments and decide which registered capabilities the current user may actually invoke."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which dispatch method is appropriate?",
+      "options": [
+        "Explicit callable registry",
+        "eval(model_output)",
+        "Import any requested module"
+      ],
+      "answer": "Explicit callable registry",
+      "explanation": "An explicit registry limits dispatch to application-owned capabilities."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement dispatch(name,args). Support \"add\" with keys a,b and \"upper\" with key text. Return {\"ok\":True,\"result\":value}. Unknown names return {\"ok\":False,\"error\":\"unknown_tool\"}. Inputs for known tools are already validated.",
+      "starter": "def dispatch(name,args):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def dispatch(name,args):\n    registry = {\"add\":lambda a,b:a+b,\"upper\":lambda text:text.upper()}\n    if name not in registry:\n        return {\"ok\":False,\"error\":\"unknown_tool\"}\n    return {\"ok\":True,\"result\":registry[name](**args)}\n",
+      "solutionExplanation": "An explicit registry limits dispatch to application-owned capabilities. Look up the name, handle absence, and call the registered function with keyword arguments. Never use eval on model-generated tool arguments.",
+      "tests": [
+        {
+          "name": "Add",
+          "code": "assert dispatch(\"add\",{\"a\":2,\"b\":3}) == {\"ok\":True,\"result\":5}",
+          "explanation": "Known structured arguments reach a callable."
+        },
+        {
+          "name": "Text",
+          "code": "assert dispatch(\"upper\",{\"text\":\"blå\"})[\"result\"] == \"BLÅ\"",
+          "explanation": "The second registered tool works."
+        },
+        {
+          "name": "Unknown",
+          "code": "assert dispatch(\"__import__\",{}) == {\"ok\":False,\"error\":\"unknown_tool\"}",
+          "explanation": "Unknown capability names are rejected."
+        }
+      ],
+      "hints": [
+        "An explicit registry limits dispatch to application-owned capabilities.",
+        "Look up the name, handle absence, and call the registered function with keyword arguments."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Never use eval on model-generated tool arguments.",
+      "Registration alone does not establish user authorization."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "tools",
+      "security"
+    ]
+  },
+  {
+    "id": "agents-state",
+    "module": "agents",
+    "section": "Tools and control",
+    "title": "Represent agent state explicitly",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-dispatch"
+    ],
+    "objectives": [
+      "Explain represent agent state explicitly in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "An agent needs state describing its task, observations, pending action, and termination status. Keeping this state in an explicit object makes the control loop inspectable. Hidden mutable globals make replay, testing, and concurrency harder because a function's behavior depends on history that is not visible in its inputs.\n\nA reducer takes the previous state and an event and returns a new state. For an observation event, append the observation and increment the step count. Do not mutate a list shared with the old state; shallow copying a dictionary alone does not copy nested lists. Immutable-style updates allow debugging tools to compare snapshots and make checkpoint storage straightforward. This exercise intentionally uses small dictionaries rather than a framework so the state transition contract is clear before introducing graph-based orchestration or durable execution.",
+    "why": "When an agent repeats a tool or loses a result, explicit snapshots reveal what it knew at each decision. Reducer-style updates make retries, replay, and monitoring easier while preventing concurrent sessions from accidentally sharing mutable observations or step counters.",
+    "example": {
+      "code": "old = {\"steps\":0,\"observations\":[]}\nnew = {**old,\"steps\":old[\"steps\"]+1,\"observations\":[*old[\"observations\"],\"found\"]}\nprint(old[\"observations\"])  # []",
+      "explanation": "The new dictionary contains a new observations list, so the old snapshot stays unchanged. Copying only the outer dictionary and then appending would still mutate the shared nested list. This distinction matters when snapshots are retained for replay, displayed in a debugger, or used by concurrent agent sessions."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does copying a dict automatically deep-copy nested lists?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "A shallow dictionary copy still shares nested mutable objects unless they are copied too."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement record_observation(state,observation). Return a new dict preserving other fields, incrementing steps (default 0), and appending to a new observations list (default []). Do not mutate state or its list.",
+      "starter": "def record_observation(state,observation):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def record_observation(state,observation):\n    return {**state,\"steps\":state.get(\"steps\",0)+1,\"observations\":[*state.get(\"observations\",[]),observation]}\n",
+      "solutionExplanation": "A shallow dictionary copy still shares nested mutable objects unless they are copied too. Use a new list containing prior observations plus the new observation. Do not append directly to a list shared with an old snapshot.",
+      "tests": [
+        {
+          "name": "Update",
+          "code": "assert record_observation({\"steps\":2,\"observations\":[\"a\"]},\"b\") == {\"steps\":3,\"observations\":[\"a\",\"b\"]}",
+          "explanation": "The transition records progress."
+        },
+        {
+          "name": "Defaults",
+          "code": "assert record_observation({},\"x\") == {\"steps\":1,\"observations\":[\"x\"]}",
+          "explanation": "Missing state fields use defaults."
+        },
+        {
+          "name": "Immutable",
+          "code": "state={\"steps\":0,\"observations\":[]}\nrecord_observation(state,\"x\")\nassert state == {\"steps\":0,\"observations\":[]}",
+          "explanation": "Historical snapshots remain intact."
+        }
+      ],
+      "hints": [
+        "A shallow dictionary copy still shares nested mutable objects unless they are copied too.",
+        "Use a new list containing prior observations plus the new observation."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not append directly to a list shared with an old snapshot.",
+      "Do not use global state for independent user sessions."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "state"
+    ]
+  },
+  {
+    "id": "agents-checkpoint-tools",
+    "module": "agents",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: validate and execute a tool call",
+    "minutes": 10,
+    "difficulty": "Foundation",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "agents-state"
+    ],
+    "objectives": [
+      "Explain checkpoint: validate and execute a tool call in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "This checkpoint joins parsing, validation, dispatch, and state recording into one controlled boundary. A caller supplies JSON describing a tool and arguments. The application must determine whether the shape and types are valid before executing a registered operation. Structured failure should leave no ambiguity about whether a tool ran.\n\nWe support one pure addition tool to isolate the boundary logic. Reject unknown names, unexpected fields, missing numbers, and booleans masquerading as integers. Valid calls produce a result observation; malformed calls produce an invalid_call observation. This policy deliberately groups validation failures into one public category while avoiding exposure of internal stack details. A production system should retain safe diagnostic categories internally and distinguish programming defects from expected user or model errors. The tests cover success, unknown capability, and type confusion.",
+    "why": "A real agent boundary combines several individually simple checks. Testing the combined path catches mistakes such as executing before validation, accepting unintended capabilities, or returning success after an invalid argument, all of which become more consequential when tools have external side effects.",
+    "example": {
+      "code": "import json\ncall = json.loads('{\"tool\":\"add\",\"args\":{\"a\":2,\"b\":4}}')\nprint(call[\"tool\"], sorted(call[\"args\"]))",
+      "explanation": "Decoding produces a data object but does not authorize or validate the operation. The tool name and argument keys are now inspectable, which is the starting point for a controlled dispatch boundary. The checkpoint follows parsing with strict checks and only then performs the registered arithmetic operation and constructs an observation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which step must occur before execution?",
+      "options": [
+        "Argument validation",
+        "Success message",
+        "XP reward"
+      ],
+      "answer": "Argument validation",
+      "explanation": "Arguments must be validated before a registered tool executes."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement execute_call(raw). Parse JSON requiring exactly tool,args; tool must be \"add\"; args exactly a,b, each exact int or float (not bool). Return {\"ok\":True,\"result\":a+b}; any parse/shape/type failure returns {\"ok\":False,\"error\":\"invalid_call\"}.",
+      "starter": "def execute_call(raw):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def execute_call(raw):\n    import json\n    try:\n        call = json.loads(raw)\n        if not isinstance(call,dict) or set(call) != {\"tool\",\"args\"} or call[\"tool\"] != \"add\":\n            raise ValueError(\"Invalid call\")\n        args = call[\"args\"]\n        if not isinstance(args,dict) or set(args) != {\"a\",\"b\"} or any(type(v) not in (int,float) for v in args.values()):\n            raise ValueError(\"Invalid args\")\n        return {\"ok\":True,\"result\":args[\"a\"]+args[\"b\"]}\n    except (ValueError,TypeError):\n        return {\"ok\":False,\"error\":\"invalid_call\"}\n",
+      "solutionExplanation": "Arguments must be validated before a registered tool executes. Parse inside a narrow error boundary, verify exact keys and types, then perform addition. Do not return success merely because JSON parsed.",
+      "tests": [
+        {
+          "name": "Success",
+          "code": "assert execute_call('{\"tool\":\"add\",\"args\":{\"a\":2,\"b\":3}}') == {\"ok\":True,\"result\":5}",
+          "explanation": "Valid calls execute."
+        },
+        {
+          "name": "Unknown",
+          "code": "assert execute_call('{\"tool\":\"shell\",\"args\":{}}')[\"ok\"] is False",
+          "explanation": "Unknown operations never execute."
+        },
+        {
+          "name": "Boolean",
+          "code": "assert execute_call('{\"tool\":\"add\",\"args\":{\"a\":true,\"b\":3}}')[\"error\"] == \"invalid_call\"",
+          "explanation": "Strict numeric validation excludes booleans."
+        }
+      ],
+      "hints": [
+        "Arguments must be validated before a registered tool executes.",
+        "Parse inside a narrow error boundary, verify exact keys and types, then perform addition."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not return success merely because JSON parsed.",
+      "Do not catch every programming exception and label it a normal invalid call."
+    ],
+    "xp": 50,
+    "tags": [
+      "agents",
+      "tools",
+      "validation"
+    ]
+  },
+  {
+    "id": "agents-action-loop",
+    "module": "agents",
+    "section": "Orchestration patterns",
+    "title": "Run an observation and action loop",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-checkpoint-tools"
+    ],
+    "objectives": [
+      "Explain run an observation and action loop in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "An agent loop alternates decision, action, and observation. A policy inspects state and proposes either a tool call or a final answer. The executor validates and runs the action, then records its result as an observation. The next policy decision uses that updated state. A final answer terminates the loop instead of being sent to a tool dispatcher.\n\nThe policy may be a language model, but our examples use deterministic rules or scripted actions and are labeled simulated. This makes control-flow behavior testable without paid services. The loop still needs a maximum step count, unknown-action handling, and a defined failure result. A budget is an application limit, not a request the model can choose to ignore. Recording the action sequence supports debugging and later evaluation of unnecessary or repeated tool calls.",
+    "why": "Tool selection alone does not complete an agent. The application must feed observations back into subsequent decisions and stop reliably. A bounded simulated loop exposes these mechanics before model variability makes it harder to tell policy failures from orchestration bugs.",
+    "example": {
+      "code": "actions = [{\"type\":\"tool\",\"value\":\"search\"},{\"type\":\"final\",\"value\":\"done\"}]\nfor action in actions:\n    if action[\"type\"] == \"final\":\n        break\n    print(\"Execute:\",action[\"value\"])",
+      "explanation": "The final action is a control signal rather than a tool name. Processing stops as soon as it appears, so later scripted actions cannot execute accidentally. The exercise adds an explicit budget and structured result, preserving the distinction between normal completion and exhaustion when no final signal arrives in time."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order one loop iteration.",
+      "options": [
+        "Record observation",
+        "Choose action",
+        "Execute validated tool"
+      ],
+      "answer": [
+        "Choose action",
+        "Execute validated tool",
+        "Record observation"
+      ],
+      "explanation": "The loop chooses an action, executes a validated tool, then records the observation."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement run_script(actions,max_steps). Process at most max_steps action dictionaries. A tool action appends value to observations; a final action returns status \"done\", answer=value, observations. If no final is processed return status \"budget_exhausted\", answer=None, observations. Nonpositive budgets process nothing.",
+      "starter": "def run_script(actions,max_steps):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def run_script(actions,max_steps):\n    observations = []\n    for action in actions[:max(0,max_steps)]:\n        if action[\"type\"] == \"final\":\n            return {\"status\":\"done\",\"answer\":action[\"value\"],\"observations\":observations}\n        if action[\"type\"] == \"tool\":\n            observations.append(action[\"value\"])\n    return {\"status\":\"budget_exhausted\",\"answer\":None,\"observations\":observations}\n",
+      "solutionExplanation": "The loop chooses an action, executes a validated tool, then records the observation. Slice by a nonnegative budget and return immediately on a final action. Do not dispatch final answers as tool calls.",
+      "tests": [
+        {
+          "name": "Complete",
+          "code": "assert run_script([{\"type\":\"tool\",\"value\":\"found\"},{\"type\":\"final\",\"value\":\"answer\"}],3)[\"answer\"] == \"answer\"",
+          "explanation": "Final actions terminate normally."
+        },
+        {
+          "name": "Bounded",
+          "code": "assert run_script([{\"type\":\"tool\",\"value\":\"x\"},{\"type\":\"final\",\"value\":\"y\"}],1)[\"status\"] == \"budget_exhausted\"",
+          "explanation": "The application enforces the step cap."
+        },
+        {
+          "name": "Zero",
+          "code": "assert run_script([{\"type\":\"tool\",\"value\":\"x\"}],0)[\"observations\"] == []",
+          "explanation": "Zero budget executes nothing."
+        }
+      ],
+      "hints": [
+        "The loop chooses an action, executes a validated tool, then records the observation.",
+        "Slice by a nonnegative budget and return immediately on a final action."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not dispatch final answers as tool calls.",
+      "Do not rely on the model alone to enforce termination."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "loops"
+    ],
+    "visual": "pipeline"
+  },
+  {
+    "id": "agents-memory",
+    "module": "agents",
+    "section": "Orchestration patterns",
+    "title": "Keep working memory bounded",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-action-loop"
+    ],
+    "objectives": [
+      "Explain keep working memory bounded in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Agent memory has several meanings. Working memory holds the current task and recent observations. Long-term memory stores information across sessions, often through a database or retrieval index. A model context window is limited, so retaining every observation indefinitely can increase cost and hide important facts among noise. Memory should have an explicit retention policy.\n\nA simple bounded history keeps the most recent n observations. This is not semantic memory and may discard a crucial earlier fact, so production systems often preserve structured task state separately from conversational history. Sensitive data should not become durable memory by accident. Decide what can be stored, for how long, and under which user scope. This exercise implements a pure history update that never mutates prior snapshots, making its retention behavior easy to inspect and test.",
+    "why": "Long tool traces can exhaust context windows and increase latency. A bounded working-memory policy prevents unlimited growth while making information loss explicit, helping engineers decide which facts deserve structured state or authorized long-term storage rather than relying on an ever-growing conversation transcript.",
+    "example": {
+      "code": "history = [\"search started\",\"found three pages\",\"selected one page\"]\nprint(history[-2:])  # last two observations",
+      "explanation": "Negative slicing keeps a suffix in chronological order, which is useful for recent observations. It does not summarize or understand the content, so earlier information is simply discarded. The exercise adds a new observation, handles a zero capacity explicitly, and ensures previous state remains unchanged for replay and debugging."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does a recent-history buffer provide semantic long-term memory?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "A bounded buffer retains recent data but does not create semantic long-term memory."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement remember(history,item,capacity). Return a new list containing the newest capacity items after appending item. capacity<=0 returns []. Preserve order and leave history unchanged.",
+      "starter": "def remember(history,item,capacity):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def remember(history,item,capacity):\n    return [*history,item][-capacity:] if capacity > 0 else []\n",
+      "solutionExplanation": "A bounded buffer retains recent data but does not create semantic long-term memory. Build a new list, then take its suffix only when capacity is positive. Do not use [-0:] expecting an empty list.",
+      "tests": [
+        {
+          "name": "Bound",
+          "code": "assert remember([\"a\",\"b\"],\"c\",2) == [\"b\",\"c\"]",
+          "explanation": "Oldest entries are evicted."
+        },
+        {
+          "name": "Zero",
+          "code": "assert remember([\"a\"],\"b\",0) == []",
+          "explanation": "Zero capacity is handled explicitly."
+        },
+        {
+          "name": "Immutable",
+          "code": "old=[\"a\"]\nremember(old,\"b\",3)\nassert old == [\"a\"]",
+          "explanation": "Snapshots remain reusable."
+        }
+      ],
+      "hints": [
+        "A bounded buffer retains recent data but does not create semantic long-term memory.",
+        "Build a new list, then take its suffix only when capacity is positive."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not use [-0:] expecting an empty list.",
+      "Do not persist private observations across users without an explicit scope policy."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "memory"
+    ]
+  },
+  {
+    "id": "agents-planning",
+    "module": "agents",
+    "section": "Orchestration patterns",
+    "title": "Plan steps with explicit dependencies",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-memory"
+    ],
+    "objectives": [
+      "Explain plan steps with explicit dependencies in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A plan decomposes a task into steps with dependencies and completion criteria. Planning can reduce aimless tool use, but a generated plan is still a proposal: validate its operations, permissions, and resource needs before execution. Plans should be revised when observations contradict assumptions rather than followed blindly.\n\nA dependency graph describes which steps can run now. A step is ready when it is unfinished and every dependency is complete. Independent ready steps may run concurrently if they do not conflict over shared resources. Completed ids should be represented as a set for efficient membership checks. A missing dependency or cycle can leave no ready step even though work remains, so the scheduler needs a blocked-state diagnosis. This lesson implements readiness only, keeping scheduling policy separate from tool execution and model planning.",
+    "why": "Research and extraction tasks often need several dependent operations, such as searching before reading and reading before summarizing. Explicit dependencies expose safe parallel opportunities and prevent premature actions, while making blocked or cyclic plans easier to diagnose than an informal natural-language checklist.",
+    "example": {
+      "code": "completed = {\"search\"}\nstep = {\"id\":\"read\",\"depends_on\":[\"search\"]}\nprint(all(dep in completed for dep in step[\"depends_on\"]))",
+      "explanation": "The readiness check evaluates dependencies against completed work rather than the order in which a model listed steps. This lets a scheduler separate planning from execution and identify independent tasks. It also exposes a limitation: readiness alone cannot explain cycles or missing ids, so production orchestration needs additional validation and blocked-state reporting."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When is a step ready?",
+      "options": [
+        "All dependencies are complete",
+        "It appears first in a list",
+        "The model sounds confident"
+      ],
+      "answer": "All dependencies are complete",
+      "explanation": "A step is ready when every dependency is complete and the step itself is unfinished."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement ready_steps(steps,completed). Each step has id and depends_on list. Return unfinished step ids in input order when all dependencies are in completed. Missing dependencies keep a step blocked. Empty dependency lists are ready.",
+      "starter": "def ready_steps(steps,completed):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def ready_steps(steps,completed):\n    done = set(completed)\n    return [step[\"id\"] for step in steps if step[\"id\"] not in done and all(dep in done for dep in step[\"depends_on\"])]\n",
+      "solutionExplanation": "A step is ready when every dependency is complete and the step itself is unfinished. Use a completed-id set and all over each dependency list. Do not execute a generated plan without validating capabilities and permissions.",
+      "tests": [
+        {
+          "name": "Dependency",
+          "code": "assert ready_steps([{\"id\":\"read\",\"depends_on\":[\"search\"]}],[\"search\"]) == [\"read\"]",
+          "explanation": "Satisfied dependencies enable execution."
+        },
+        {
+          "name": "Blocked",
+          "code": "assert ready_steps([{\"id\":\"read\",\"depends_on\":[\"missing\"]}],[]) == []",
+          "explanation": "Unknown prerequisites do not become complete."
+        },
+        {
+          "name": "Completed",
+          "code": "assert ready_steps([{\"id\":\"a\",\"depends_on\":[]}],[\"a\"]) == []",
+          "explanation": "Finished work is not scheduled again."
+        }
+      ],
+      "hints": [
+        "A step is ready when every dependency is complete and the step itself is unfinished.",
+        "Use a completed-id set and all over each dependency list."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not execute a generated plan without validating capabilities and permissions.",
+      "No ready steps can mean a cycle or missing dependency, not task completion."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "planning"
+    ]
+  },
+  {
+    "id": "agents-multi-agent",
+    "module": "agents",
+    "section": "Orchestration patterns",
+    "title": "Coordinate specialists with typed handoffs",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-planning"
+    ],
+    "objectives": [
+      "Explain coordinate specialists with typed handoffs in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A multi-agent system divides work among components with different responsibilities. A researcher may collect evidence, an analyst may extract facts, and a reviewer may check support. These roles do not automatically create independent expertise or better accuracy; they can repeat the same model errors while adding latency and cost. Use multiple agents only when decomposition has a clear benefit.\n\nHandoffs need contracts describing sender, recipient, task id, payload, and status. A coordinator should route messages only to known workers and preserve trace identifiers. Treat worker outputs as data to validate, not authority to change application permissions. Shared mutable memory can create races, so prefer explicit messages or controlled state transitions. This exercise groups tasks by a fixed role registry, demonstrating routing without pretending that any language models or independent researchers were executed.",
+    "why": "Specialized workflows become manageable when handoffs are explicit and inspectable. A role registry and structured messages make missing responsibilities, duplicate tasks, and unknown recipients visible, while avoiding the assumption that adding more model calls automatically improves evidence quality or reliability.",
+    "example": {
+      "code": "workers = {\"research\":[],\"review\":[]}\nmessage = {\"role\":\"review\",\"task\":\"check citations\"}\nworkers[message[\"role\"]].append(message[\"task\"])\nprint(workers[\"review\"])",
+      "explanation": "The role name selects a known queue and the task becomes data inside that queue. No agent is executed by this routing operation. A complete coordinator must still validate payloads, track completion, enforce timeouts, and combine results according to an explicit contract rather than trusting a worker's prose as authoritative control instructions."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does adding more agents guarantee?",
+      "options": [
+        "Nothing about accuracy by itself",
+        "Independent correct answers",
+        "Lower latency"
+      ],
+      "answer": "Nothing about accuracy by itself",
+      "explanation": "More agents add coordination and cost; they do not guarantee independent correctness."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement route_tasks(tasks,roles). Return a dict with an empty list for each allowed role, then append each task id to its role list in order. Unknown roles raise ValueError. Each task has id,role.",
+      "starter": "def route_tasks(tasks,roles):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def route_tasks(tasks,roles):\n    queues = {role:[] for role in roles}\n    for task in tasks:\n        if task[\"role\"] not in queues:\n            raise ValueError(\"Unknown role\")\n        queues[task[\"role\"]].append(task[\"id\"])\n    return queues\n",
+      "solutionExplanation": "More agents add coordination and cost; they do not guarantee independent correctness. Initialize allowed-role queues and reject any task whose role is absent. Do not treat worker output as permission to expand capabilities.",
+      "tests": [
+        {
+          "name": "Routes",
+          "code": "assert route_tasks([{\"id\":\"a\",\"role\":\"research\"},{\"id\":\"b\",\"role\":\"review\"}],[\"research\",\"review\"]) == {\"research\":[\"a\"],\"review\":[\"b\"]}",
+          "explanation": "Roles receive their own work."
+        },
+        {
+          "name": "Empty",
+          "code": "assert route_tasks([],[\"review\"]) == {\"review\":[]}",
+          "explanation": "Known empty queues remain visible."
+        },
+        {
+          "name": "Unknown",
+          "code": "try:\n    route_tasks([{\"id\":\"a\",\"role\":\"admin\"}],[\"review\"])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Unregistered recipients are rejected."
+        }
+      ],
+      "hints": [
+        "More agents add coordination and cost; they do not guarantee independent correctness.",
+        "Initialize allowed-role queues and reject any task whose role is absent."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not treat worker output as permission to expand capabilities.",
+      "Do not assume differently named roles eliminate correlated model errors."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "multi-agent"
+    ]
+  },
+  {
+    "id": "agents-graphs",
+    "module": "agents",
+    "section": "Orchestration patterns",
+    "title": "Model workflows as state graphs",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-multi-agent"
+    ],
+    "objectives": [
+      "Explain model workflows as state graphs in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Graph-based frameworks represent execution as nodes, edges, and shared state. A node performs a bounded operation; an edge selects the next node. Conditional edges choose a path from state, such as retrying after a recoverable error or ending after a completed answer. LangGraph uses these concepts alongside state updates and checkpointing, but the concepts are useful without any framework dependency.\n\nA graph is not automatically safe or durable. You still need terminal states, execution budgets, validated transitions, and persistence appropriate to the application. Framework convenience does not replace understanding what each node can do. This exercise implements a tiny transition table over explicit statuses. Unknown statuses fail instead of silently jumping to a privileged operation. Keeping transitions pure lets tests inspect control flow separately from network calls, model behavior, and tool side effects.",
+    "why": "A graph makes branching agent behavior easier to inspect than nested callbacks. Explicit transition tables reveal retry paths and terminal states, helping teams evaluate framework choices and debug control flow without attributing application guarantees to a library that still depends on their configuration.",
+    "example": {
+      "code": "edges = {\"start\":\"plan\",\"planned\":\"execute\",\"completed\":\"end\"}\nprint(edges[\"planned\"])  # execute",
+      "explanation": "The table maps an observed status to the next node. It is data describing control flow, not an executing framework. A real graph runtime combines such transitions with node functions, state persistence, and scheduling. Keeping the transition rule pure makes it easier to test terminal behavior and reject unexpected statuses."
+    },
+    "activity": {
+      "type": "match",
+      "question": "Match graph concepts.",
+      "options": [
+        "Node",
+        "Conditional edge"
+      ],
+      "answer": [
+        "A bounded operation",
+        "A state-dependent next step"
+      ],
+      "explanation": "A node performs work; a conditional edge selects the next step from state."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement next_node(status,retries_left). Return plan for start, execute for planned, end for completed. For failed return retry if retries_left>0 else end. Unknown status raises ValueError.",
+      "starter": "def next_node(status,retries_left):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def next_node(status,retries_left):\n    if status == \"failed\":\n        return \"retry\" if retries_left > 0 else \"end\"\n    edges = {\"start\":\"plan\",\"planned\":\"execute\",\"completed\":\"end\"}\n    if status not in edges:\n        raise ValueError(\"Unknown status\")\n    return edges[status]\n",
+      "solutionExplanation": "A node performs work; a conditional edge selects the next step from state. Handle the failure branch separately, then look up known fixed transitions. Do not assume a graph library automatically prevents infinite loops.",
+      "tests": [
+        {
+          "name": "Normal",
+          "code": "assert next_node(\"planned\",0) == \"execute\"",
+          "explanation": "A normal edge advances."
+        },
+        {
+          "name": "Budget",
+          "code": "assert next_node(\"failed\",0) == \"end\" and next_node(\"failed\",1) == \"retry\"",
+          "explanation": "Retry edges depend on remaining budget."
+        },
+        {
+          "name": "Unknown",
+          "code": "try:\n    next_node(\"admin\",3)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Unknown states do not gain arbitrary transitions."
+        }
+      ],
+      "hints": [
+        "A node performs work; a conditional edge selects the next step from state.",
+        "Handle the failure branch separately, then look up known fixed transitions."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not assume a graph library automatically prevents infinite loops.",
+      "Do not confuse persisted state with guaranteed exactly-once side effects."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "langgraph",
+      "frameworks"
+    ],
+    "visual": "pipeline"
+  },
+  {
+    "id": "agents-checkpoint-orchestration",
+    "module": "agents",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: schedule a bounded workflow",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "agents-graphs"
+    ],
+    "objectives": [
+      "Explain checkpoint: schedule a bounded workflow in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "This checkpoint combines dependencies, working state, and a budget. A scheduler repeatedly finds unfinished steps whose prerequisites are complete, chooses the first ready step, and marks it complete. Our tasks are simulated ids rather than real network operations so the control-flow contract can be tested independently of tool behavior.\n\nStop when every step is done, when the budget is exhausted, or when no unfinished step is ready. These are different outcomes. A blocked plan may contain a missing dependency or a cycle; it is not a successful completion. Preserve input ordering as the deterministic scheduling policy. Do not mutate the plan or caller's completed list. The exercise demonstrates why agent orchestration needs explicit terminal conditions even when every individual step appears harmless and the model supplies a confident plan.",
+    "why": "A multi-step agent can stall or loop despite valid individual tool calls. This scheduler makes completion, blocking, and budget exhaustion distinct, creating a reusable control-flow boundary that can later wrap real tools while retaining reproducible tests and an inspectable execution trace.",
+    "example": {
+      "code": "steps = [{\"id\":\"search\",\"depends_on\":[]},{\"id\":\"read\",\"depends_on\":[\"search\"]}]\ndone = set()\nready = [s[\"id\"] for s in steps if all(d in done for d in s[\"depends_on\"])]\nprint(ready)  # ['search']",
+      "explanation": "Initially only search is ready because read depends on an observation that does not exist yet. After completing search, another readiness check can enable read. The checkpoint repeats this process within a budget, records order, and identifies blocked plans rather than assuming that an empty ready list means all work succeeded."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "An unfinished plan with no ready steps is what?",
+      "options": [
+        "Blocked",
+        "Complete",
+        "Automatically authorized"
+      ],
+      "answer": "Blocked",
+      "explanation": "An unfinished plan with no ready step is blocked, potentially by a cycle or missing dependency."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement schedule(steps,max_steps). Starting with no completed ids, repeatedly run the first ready unfinished step (dependencies completed). Return {status:\"done\"|\"blocked\"|\"budget_exhausted\",order:[ids]}. Empty plan is done; nonpositive budget exhausts a nonempty plan. Inputs have unique ids.",
+      "starter": "def schedule(steps,max_steps):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def schedule(steps,max_steps):\n    done, order = set(), []\n    for _ in range(max(0,max_steps)):\n        if len(done) == len(steps):\n            return {\"status\":\"done\",\"order\":order}\n        ready = [s for s in steps if s[\"id\"] not in done and all(d in done for d in s[\"depends_on\"])]\n        if not ready:\n            return {\"status\":\"blocked\",\"order\":order}\n        step = ready[0]\n        done.add(step[\"id\"])\n        order.append(step[\"id\"])\n    return {\"status\":\"done\" if len(done)==len(steps) else \"budget_exhausted\",\"order\":order}\n",
+      "solutionExplanation": "An unfinished plan with no ready step is blocked, potentially by a cycle or missing dependency. Recompute ready steps after each completion and distinguish all three terminal outcomes. Do not label an empty ready list successful without checking unfinished work.",
+      "tests": [
+        {
+          "name": "Sequence",
+          "code": "assert schedule([{\"id\":\"b\",\"depends_on\":[\"a\"]},{\"id\":\"a\",\"depends_on\":[]}],2) == {\"status\":\"done\",\"order\":[\"a\",\"b\"]}",
+          "explanation": "Dependencies override list position."
+        },
+        {
+          "name": "Cycle",
+          "code": "assert schedule([{\"id\":\"a\",\"depends_on\":[\"b\"]},{\"id\":\"b\",\"depends_on\":[\"a\"]}],4)[\"status\"] == \"blocked\"",
+          "explanation": "Cycles do not count as success."
+        },
+        {
+          "name": "Budget",
+          "code": "assert schedule([{\"id\":\"a\",\"depends_on\":[]}],0) == {\"status\":\"budget_exhausted\",\"order\":[]}",
+          "explanation": "No budget means no step executes."
+        }
+      ],
+      "hints": [
+        "An unfinished plan with no ready step is blocked, potentially by a cycle or missing dependency.",
+        "Recompute ready steps after each completion and distinguish all three terminal outcomes."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not label an empty ready list successful without checking unfinished work.",
+      "Do not mutate caller-owned plan or completion state."
+    ],
+    "xp": 50,
+    "tags": [
+      "agents",
+      "planning",
+      "budgets"
+    ]
+  },
+  {
+    "id": "agents-recovery",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Recover from transient tool failures",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-checkpoint-orchestration"
+    ],
+    "objectives": [
+      "Explain recover from transient tool failures in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Tool failures are observations the controller must handle. Some are transient, such as a rate limit or temporary service outage; others require changed input or permission, such as invalid arguments or forbidden access. Retrying every error wastes resources and may repeat harmful side effects. Classify failures before deciding whether another attempt is appropriate.\n\nA retry policy needs a bounded attempt count and delay, often exponential backoff with jitter. Timeout handling must also distinguish waiting limits from cancellation: a timed-out remote operation may still finish. Retrying a write can therefore duplicate effects unless the operation uses an idempotency key. Our exercise generates a deterministic backoff schedule without sleeping. It teaches attempt accounting and caps while keeping the browser responsive. Real tools should use asynchronous delays, explicit deadlines, and per-operation decisions about whether retries are safe.",
+    "why": "An agent that gives up on every transient error is brittle, but one that retries forever is expensive and dangerous. Explicit failure classification and bounded backoff make recovery predictable, especially when external APIs impose limits or a timeout leaves a write's outcome uncertain.",
+    "example": {
+      "code": "base, cap = 1.0, 5.0\nprint([min(cap,base*2**i) for i in range(4)])  # [1,2,4,5]",
+      "explanation": "The delay doubles between retries until it reaches a cap. This example computes a schedule rather than blocking or calling an external service. A production implementation would usually add jitter to avoid synchronized clients and would apply the schedule only to failures classified as transient and operations safe to retry."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Does a client timeout prove a remote write did not happen?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "No",
+      "explanation": "A timeout limits waiting; the remote operation may still complete."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement retry_delays(error,attempts,base=1,cap=8). Only errors \"timeout\",\"rate_limit\",\"unavailable\" are retryable. Return max(0,attempts-1) capped exponential delays; other errors return []. attempts counts the initial call.",
+      "starter": "def retry_delays(error,attempts,base=1,cap=8):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def retry_delays(error,attempts,base=1,cap=8):\n    if error not in {\"timeout\",\"rate_limit\",\"unavailable\"}:\n        return []\n    return [min(cap,base*2**i) for i in range(max(0,attempts-1))]\n",
+      "solutionExplanation": "A timeout limits waiting; the remote operation may still complete. Classify the error first, then generate attempts-1 delays with a cap. Do not retry side effects blindly after timeouts.",
+      "tests": [
+        {
+          "name": "Backoff",
+          "code": "assert retry_delays(\"timeout\",5,1,4) == [1,2,4,4]",
+          "explanation": "There is one fewer delay than total attempts."
+        },
+        {
+          "name": "Permanent",
+          "code": "assert retry_delays(\"forbidden\",5) == []",
+          "explanation": "Permission errors are not retried."
+        },
+        {
+          "name": "One attempt",
+          "code": "assert retry_delays(\"timeout\",1) == []",
+          "explanation": "An initial-only policy has no retries."
+        }
+      ],
+      "hints": [
+        "A timeout limits waiting; the remote operation may still complete.",
+        "Classify the error first, then generate attempts-1 delays with a cap."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not retry side effects blindly after timeouts.",
+      "Do not implement backoff with blocking sleep in the UI thread."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "retries",
+      "timeouts"
+    ]
+  },
+  {
+    "id": "agents-budgets",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Prevent infinite action loops",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-recovery"
+    ],
+    "objectives": [
+      "Explain prevent infinite action loops in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "An agent can repeat a plausible action without making progress. A model instruction to stop is useful but insufficient because the application owns resource limits. Enforce maximum steps, elapsed time, tool-call counts, and cost budgets outside the model. Different limits protect against different failure modes, so one cap should not be mistaken for a complete policy.\n\nRepeated-action detection can stop obvious loops. Represent an action by its tool name and canonical arguments, then count identical signatures in a trace. Canonical JSON key ordering avoids treating the same arguments in different dictionary orders as different calls. Repetition is not always wrong, so the threshold should match the task and distinguish planned polling from accidental loops. This exercise detects repeated calls without executing them, demonstrating an inspectable policy that can be tested before connecting expensive tools.",
+    "why": "Repeated search or retry actions can burn a learner's API budget without completing a task. Application-enforced limits and explicit repetition detection bound that failure, while traceable signatures help engineers see whether an agent is progressing or cycling through identical decisions.",
+    "example": {
+      "code": "import json\na = {\"tool\":\"search\",\"args\":{\"q\":\"python\",\"k\":3}}\nprint(json.dumps(a,sort_keys=True,separators=(\",\",\":\")))",
+      "explanation": "Canonical serialization produces the same signature when dictionary key order changes, so equivalent actions can be counted reliably. The signature represents data rather than executable code. A production loop detector may include selected state or elapsed time, but must still preserve a clear policy for legitimate repeated calls and polling."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Where should hard step limits be enforced?",
+      "options": [
+        "Application controller",
+        "Only in a prompt",
+        "Only by the tool description"
+      ],
+      "answer": "Application controller",
+      "explanation": "The application controller must enforce hard resource limits independently of model compliance."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement repeated_action(actions,limit). Return True if any canonical JSON action occurs at least limit times; False otherwise. limit must be positive or raise ValueError. Actions are JSON-serializable dictionaries.",
+      "starter": "def repeated_action(actions,limit):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def repeated_action(actions,limit):\n    import json\n    if limit <= 0:\n        raise ValueError(\"limit must be positive\")\n    counts = {}\n    for action in actions:\n        key = json.dumps(action,sort_keys=True,separators=(\",\",\":\"))\n        counts[key] = counts.get(key,0)+1\n        if counts[key] >= limit:\n            return True\n    return False\n",
+      "solutionExplanation": "The application controller must enforce hard resource limits independently of model compliance. Canonicalize each action with sorted JSON keys and count signatures. Do not assume a prompt guarantees termination.",
+      "tests": [
+        {
+          "name": "Repeat",
+          "code": "assert repeated_action([{\"tool\":\"x\",\"args\":{\"a\":1,\"b\":2}},{\"args\":{\"b\":2,\"a\":1},\"tool\":\"x\"}],2)",
+          "explanation": "Equivalent key order counts together."
+        },
+        {
+          "name": "Empty",
+          "code": "assert repeated_action([],2) is False",
+          "explanation": "No actions means no loop."
+        },
+        {
+          "name": "Distinct",
+          "code": "assert repeated_action([{\"tool\":\"a\"},{\"tool\":\"b\"}],2) is False",
+          "explanation": "Different calls do not combine."
+        }
+      ],
+      "hints": [
+        "The application controller must enforce hard resource limits independently of model compliance.",
+        "Canonicalize each action with sorted JSON keys and count signatures."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not assume a prompt guarantees termination.",
+      "Do not treat all repetition as erroneous without considering the workflow."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "budgets",
+      "loops"
+    ]
+  },
+  {
+    "id": "agents-approval",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Pause for human approval",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-budgets"
+    ],
+    "objectives": [
+      "Explain pause for human approval in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Human-in-the-loop control pauses an agent before an operation whose consequences require review. The application should present a concrete proposed action, including relevant arguments and effects, rather than ask vague permission for unspecified work. Approval belongs to that proposal and should not silently authorize a different action after arguments change.\n\nA useful state machine distinguishes pending, approved, rejected, executed, and expired proposals. Read-only operations may proceed under existing authorization, while consequential operations can require explicit approval. The policy is an application decision, not something retrieved text or model output can override. Our exercise creates a simple authorization gate for read and write actions using an approved proposal id. It does not send messages or perform writes; it models the decision boundary so the learner can test how changed or missing approval affects execution.",
+    "why": "Agents that modify external systems need reviewable boundaries. Binding approval to a concrete proposal prevents a later model decision from reusing permission for a different action, while explicit pending and rejected states make pauses understandable to users and auditable to engineers.",
+    "example": {
+      "code": "proposal = {\"id\":\"p-7\",\"kind\":\"write\",\"target\":\"report\"}\napproved_ids = {\"p-7\"}\nprint(proposal[\"id\"] in approved_ids)",
+      "explanation": "The proposal id links a review decision to a specific action record. A real application must keep that record immutable or invalidate approval when its arguments change. Membership testing alone is only one part of the boundary; the system also needs authenticated reviewers, scoped permissions, expiry, and protection against replay where appropriate."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Should approval for one proposal automatically authorize changed arguments?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Approval belongs to a concrete immutable proposal, not arbitrary later arguments."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement approval_gate(action,approved_ids). action has id and kind. Return \"allowed\" for kind read, or for kind write whose id is approved. Return \"needs_approval\" for unapproved writes and \"rejected\" for unknown kinds.",
+      "starter": "def approval_gate(action,approved_ids):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def approval_gate(action,approved_ids):\n    if action[\"kind\"] == \"read\":\n        return \"allowed\"\n    if action[\"kind\"] == \"write\":\n        return \"allowed\" if action[\"id\"] in set(approved_ids) else \"needs_approval\"\n    return \"rejected\"\n",
+      "solutionExplanation": "Approval belongs to a concrete immutable proposal, not arbitrary later arguments. Branch on action kind and check approved ids only for writes. Do not let model output grant its own approval.",
+      "tests": [
+        {
+          "name": "Read",
+          "code": "assert approval_gate({\"id\":\"a\",\"kind\":\"read\"},[]) == \"allowed\"",
+          "explanation": "Read-only policy is explicit."
+        },
+        {
+          "name": "Write",
+          "code": "assert approval_gate({\"id\":\"a\",\"kind\":\"write\"},[]) == \"needs_approval\"",
+          "explanation": "Missing approval pauses a write."
+        },
+        {
+          "name": "Scoped",
+          "code": "assert approval_gate({\"id\":\"b\",\"kind\":\"write\"},[\"a\"]) == \"needs_approval\"",
+          "explanation": "Approval is proposal-specific."
+        }
+      ],
+      "hints": [
+        "Approval belongs to a concrete immutable proposal, not arbitrary later arguments.",
+        "Branch on action kind and check approved ids only for writes."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not let model output grant its own approval.",
+      "Do not reuse approval after changing a proposal payload."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "human-in-loop"
+    ]
+  },
+  {
+    "id": "agents-injection",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Treat tool output as untrusted data",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-approval"
+    ],
+    "objectives": [
+      "Explain treat tool output as untrusted data in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Prompt injection occurs when untrusted content tries to redirect model behavior, often by pretending to be a higher-priority instruction. A retrieved page might say to ignore the task, reveal secrets, or call another tool. Its presence in a tool response does not grant authority. Keep instruction sources and data sources distinct, and enforce permissions outside the model.\n\nNo keyword filter reliably solves prompt injection. Attackers can paraphrase instructions, while benign documents may discuss attacks. Stronger controls include least-privilege tools, server-side authorization, explicit output schemas, restricted destinations, approval for sensitive side effects, and minimizing secrets available to the model. This lesson implements capability intersection: the model's requested tool set is limited by the session's trusted allowed set. The result remains a policy check, not a claim that content has been perfectly classified as safe.",
+    "why": "A research agent reads pages it does not control. Separating data from authority and enforcing least privilege prevents a page's instructions from expanding the agent's capabilities, reducing the impact of model confusion even when an injection attempt is not detected by text analysis.",
+    "example": {
+      "code": "requested = [\"search\",\"send_email\",\"read_secret\"]\nallowed = {\"search\"}\nprint([tool for tool in requested if tool in allowed])",
+      "explanation": "The trusted allowed set comes from application policy, not the document or model. Intersecting requests with that set prevents an untrusted instruction from introducing a new capability. The example does not judge whether the page is malicious; it limits consequences regardless of how persuasive or obfuscated the injected wording becomes."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Can a retrieved page grant a new tool permission?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "No",
+      "explanation": "Retrieved content is data and cannot grant tool permissions."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement allowed_tools(requested,allowed). Return unique requested tool names present in the trusted allowed collection, preserving first-request order. Unknown or disallowed tools are excluded. Do not infer permissions from text.",
+      "starter": "def allowed_tools(requested,allowed):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def allowed_tools(requested,allowed):\n    permitted, seen, result = set(allowed), set(), []\n    for tool in requested:\n        if tool in permitted and tool not in seen:\n            result.append(tool)\n            seen.add(tool)\n    return result\n",
+      "solutionExplanation": "Retrieved content is data and cannot grant tool permissions. Intersect requested names with a trusted allowlist while preserving unique encounter order. Do not claim a keyword blacklist solves prompt injection.",
+      "tests": [
+        {
+          "name": "Restrict",
+          "code": "assert allowed_tools([\"search\",\"send\"],[\"search\"]) == [\"search\"]",
+          "explanation": "Only trusted capabilities survive."
+        },
+        {
+          "name": "Deduplicate",
+          "code": "assert allowed_tools([\"read\",\"read\"],[\"read\"]) == [\"read\"]",
+          "explanation": "Repeated requests do not duplicate permissions."
+        },
+        {
+          "name": "Empty",
+          "code": "assert allowed_tools([\"admin\"],[]) == []",
+          "explanation": "No grant means no tool."
+        }
+      ],
+      "hints": [
+        "Retrieved content is data and cannot grant tool permissions.",
+        "Intersect requested names with a trusted allowlist while preserving unique encounter order."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not claim a keyword blacklist solves prompt injection.",
+      "Do not place secrets in model context unless the task requires them."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "security",
+      "prompt-injection"
+    ]
+  },
+  {
+    "id": "agents-evaluation",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Evaluate outcomes and trajectories",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-injection"
+    ],
+    "objectives": [
+      "Explain evaluate outcomes and trajectories in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Agent evaluation should measure task outcomes and the path taken to reach them. A correct final answer can hide unauthorized tool use, unnecessary calls, or a lucky recovery from invalid state. Conversely, a failed task may reflect unavailable evidence rather than a poor planner. Keep outcome quality, policy compliance, efficiency, and recovery behavior as separate dimensions.\n\nUse deterministic test tools and fixed scenarios to evaluate orchestration before testing with a stochastic model. Include unavailable services, malformed arguments, missing information, denied approval, and budget exhaustion. Record the actual action trace rather than relying on a model's summary of what it did. This exercise scores success and tool-policy compliance independently. It deliberately does not evaluate natural-language quality, so a structural metric cannot be mistaken for proof that an agent researched accurately or reasoned well.",
+    "why": "Teams need to know whether an agent completes tasks within policy and budget, not merely whether its final prose looks convincing. Separate trajectory metrics reveal unsafe shortcuts and wasted work that answer-only evaluation would miss during model or prompt changes.",
+    "example": {
+      "code": "trace = {\"success\":True,\"tools\":[\"search\",\"read\"]}\nallowed = {\"search\",\"read\"}\nprint(all(tool in allowed for tool in trace[\"tools\"]))",
+      "explanation": "A successful outcome and an allowed trajectory are independent properties. This example inspects actual recorded tool names, not an agent's retrospective claim. The exercise aggregates those properties over scenarios while retaining separate metrics, making it possible for one system change to improve completion rate but worsen policy compliance visibly."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does a correct final answer prove policy-compliant tool use?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "A correct answer can still result from disallowed or wasteful actions."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement evaluate_runs(runs,allowed). Each run has success:boolean and tools:list. Return success_rate and compliance_rate; compliance requires every tool in allowed. Empty runs returns both 0.0.",
+      "starter": "def evaluate_runs(runs,allowed):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def evaluate_runs(runs,allowed):\n    if not runs:\n        return {\"success_rate\":0.0,\"compliance_rate\":0.0}\n    permitted = set(allowed)\n    return {\"success_rate\":sum(bool(r[\"success\"]) for r in runs)/len(runs),\"compliance_rate\":sum(all(t in permitted for t in r[\"tools\"]) for r in runs)/len(runs)}\n",
+      "solutionExplanation": "A correct answer can still result from disallowed or wasteful actions. Compute outcome and allowed-tool checks independently, then divide each by run count. Do not substitute an agent self-report for the actual execution trace.",
+      "tests": [
+        {
+          "name": "Separate",
+          "code": "assert evaluate_runs([{\"success\":True,\"tools\":[\"forbidden\"]}],[\"search\"]) == {\"success_rate\":1.0,\"compliance_rate\":0.0}",
+          "explanation": "Success does not imply compliance."
+        },
+        {
+          "name": "Mixed",
+          "code": "assert evaluate_runs([{\"success\":True,\"tools\":[]},{\"success\":False,\"tools\":[]}],[])[\"success_rate\"] == 0.5",
+          "explanation": "Outcome rate uses all cases."
+        },
+        {
+          "name": "Empty",
+          "code": "assert evaluate_runs([],[]) == {\"success_rate\":0.0,\"compliance_rate\":0.0}",
+          "explanation": "No evaluation data is not perfect performance."
+        }
+      ],
+      "hints": [
+        "A correct answer can still result from disallowed or wasteful actions.",
+        "Compute outcome and allowed-tool checks independently, then divide each by run count."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not substitute an agent self-report for the actual execution trace.",
+      "Do not label structural compliance as semantic answer quality."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "evaluation"
+    ]
+  },
+  {
+    "id": "agents-monitoring",
+    "module": "agents",
+    "section": "Reliable agents",
+    "title": "Trace actions without logging secrets",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "agents-evaluation"
+    ],
+    "objectives": [
+      "Explain trace actions without logging secrets in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Monitoring connects an agent's task to decisions, tool calls, observations, retries, and terminal state. Correlation ids let engineers follow one run across components. Useful fields include tool name, duration, status, and safe error categories. Raw prompts, documents, and tool arguments may contain secrets or personal data, so logging everything is rarely an appropriate default.\n\nPrefer a small structured event schema and explicit redaction. An allowlist of safe fields is often easier to reason about than trying to remove every possible sensitive key. Retain enough information to identify slow tools and repeated failures while keeping sensitive payloads in controlled storage only when necessary. This lesson projects raw events into a bounded telemetry shape. It does not implement a monitoring service; it establishes the data contract that such a service can receive safely and consistently.",
+    "why": "When an agent stalls, a structured trace reveals whether it is waiting on a tool, repeating decisions, or exhausting a budget. A safe telemetry contract supports debugging and latency analysis without accidentally turning observability infrastructure into a second uncontrolled store of private prompts and credentials.",
+    "example": {
+      "code": "event = {\"run_id\":\"r1\",\"tool\":\"search\",\"status\":\"ok\",\"api_key\":\"secret\"}\nsafe = {key:event[key] for key in (\"run_id\",\"tool\",\"status\")}\nprint(sorted(safe))",
+      "explanation": "The output is built from explicitly permitted keys, so an unexpected sensitive field is excluded automatically. A denylist would require anticipating every secret name. The exercise extends this projection to duration and provides defaults for missing safe fields, producing consistent telemetry without copying raw arguments or observations into the log."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which default is easier to bound for telemetry?",
+      "options": [
+        "Allowlisted fields",
+        "Every field except known secrets",
+        "Full prompts always"
+      ],
+      "answer": "Allowlisted fields",
+      "explanation": "An explicit allowlist bounds what telemetry can contain even when new input fields appear."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement safe_event(event). Return only run_id, tool, status, duration_ms when those keys exist. Preserve values, ignore every other key, and do not mutate input.",
+      "starter": "def safe_event(event):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def safe_event(event):\n    return {key:event[key] for key in (\"run_id\",\"tool\",\"status\",\"duration_ms\") if key in event}\n",
+      "solutionExplanation": "An explicit allowlist bounds what telemetry can contain even when new input fields appear. Construct a new dictionary from only the named safe keys that exist. Do not log raw tool arguments or prompts by default.",
+      "tests": [
+        {
+          "name": "Filter",
+          "code": "assert safe_event({\"run_id\":\"r\",\"tool\":\"search\",\"api_key\":\"x\"}) == {\"run_id\":\"r\",\"tool\":\"search\"}",
+          "explanation": "Secrets outside the allowlist are omitted."
+        },
+        {
+          "name": "Empty",
+          "code": "assert safe_event({}) == {}",
+          "explanation": "Missing data is not invented."
+        },
+        {
+          "name": "Duration",
+          "code": "assert safe_event({\"duration_ms\":0,\"status\":\"ok\",\"prompt\":\"private\"}) == {\"status\":\"ok\",\"duration_ms\":0}",
+          "explanation": "Zero duration remains valid telemetry."
+        }
+      ],
+      "hints": [
+        "An explicit allowlist bounds what telemetry can contain even when new input fields appear.",
+        "Construct a new dictionary from only the named safe keys that exist."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not log raw tool arguments or prompts by default.",
+      "Do not assume a secret-key denylist covers every sensitive field."
+    ],
+    "xp": 20,
+    "tags": [
+      "agents",
+      "monitoring",
+      "logging"
+    ]
+  },
+  {
+    "id": "agents-checkpoint-safety",
+    "module": "agents",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: enforce the action boundary",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "agents-monitoring"
+    ],
+    "objectives": [
+      "Explain checkpoint: enforce the action boundary in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The final checkpoint combines registered capabilities, approval, and budget enforcement. A proposed action is only one input to execution. The trusted controller also knows which tools are allowed, whether a concrete write proposal was approved, and how many actions remain. These facts must be checked before any tool runs.\n\nThe order of checks determines the reported reason. We first enforce budget, then capability scope, then approval for writes. This order is a documented policy rather than a universal rule; tests make it reproducible. Read actions within scope need no additional approval under this exercise's policy. Unknown action kinds are rejected. This pure gate does not perform side effects, which lets it be tested extensively before it guards real operations. A production system must bind approvals to immutable payloads and authenticated users.",
+    "why": "Safe agent behavior depends on several controls working together. A unified pre-execution gate makes denied actions explainable and prevents a model-selected tool from bypassing resource limits or human review merely because another part of the proposal appears valid and well formatted.",
+    "example": {
+      "code": "action = {\"id\":\"p1\",\"tool\":\"write_report\",\"kind\":\"write\"}\nremaining = 0\nif remaining <= 0:\n    print(\"budget_exhausted\")",
+      "explanation": "The budget check happens before tool execution, so even a valid approved proposal cannot exceed the controller's resource limit. This example isolates the first condition. The checkpoint adds capability and approval checks with a fixed precedence, ensuring the same proposal produces a predictable reason under overlapping failure conditions."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Can model output override a trusted action budget?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "No",
+      "explanation": "Trusted application budgets cannot be overridden by model-provided instructions."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement action_gate(action,allowed,approved,remaining). Return \"budget_exhausted\" if remaining<=0; \"forbidden\" if tool not allowed or kind not read/write; \"needs_approval\" for unapproved write ids; otherwise \"allowed\".",
+      "starter": "def action_gate(action,allowed,approved,remaining):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def action_gate(action,allowed,approved,remaining):\n    if remaining <= 0:\n        return \"budget_exhausted\"\n    if action[\"tool\"] not in set(allowed) or action[\"kind\"] not in {\"read\",\"write\"}:\n        return \"forbidden\"\n    if action[\"kind\"] == \"write\" and action[\"id\"] not in set(approved):\n        return \"needs_approval\"\n    return \"allowed\"\n",
+      "solutionExplanation": "Trusted application budgets cannot be overridden by model-provided instructions. Apply the documented checks in order and return the first blocking reason. Do not let approval expand a capability allowlist.",
+      "tests": [
+        {
+          "name": "Budget",
+          "code": "assert action_gate({\"id\":\"a\",\"tool\":\"x\",\"kind\":\"read\"},[\"x\"],[],0) == \"budget_exhausted\"",
+          "explanation": "Hard caps take precedence."
+        },
+        {
+          "name": "Approval",
+          "code": "assert action_gate({\"id\":\"a\",\"tool\":\"x\",\"kind\":\"write\"},[\"x\"],[],1) == \"needs_approval\"",
+          "explanation": "Writes need proposal-specific approval."
+        },
+        {
+          "name": "Scope",
+          "code": "assert action_gate({\"id\":\"a\",\"tool\":\"admin\",\"kind\":\"write\"},[],[\"a\"],1) == \"forbidden\"",
+          "explanation": "Approval cannot expand the tool allowlist."
+        }
+      ],
+      "hints": [
+        "Trusted application budgets cannot be overridden by model-provided instructions.",
+        "Apply the documented checks in order and return the first blocking reason."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not let approval expand a capability allowlist.",
+      "Do not execute a side effect before all gates pass."
+    ],
+    "xp": 50,
+    "tags": [
+      "agents",
+      "security",
+      "budgets"
+    ]
+  },
+  {
+    "id": "agents-project-tools",
+    "module": "agents",
+    "section": "A bounded research agent",
+    "title": "Project 1/3: build research tools",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "agents-checkpoint-safety"
+    ],
+    "objectives": [
+      "Explain project 1/3: build research tools in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The capstone builds a small simulated research agent that searches a local document collection, reads one result, and returns its text. The policy is deterministic Python rather than an LLM, so the interface must label it simulated. The purpose is to implement real orchestration mechanics: tool selection, state transitions, observations, failure handling, and bounded execution.\n\nStart with a pure search tool over documents containing id and text. Match distinct lowercase whitespace tokens and return matching ids in collection order. This transparent baseline has no semantic model and cannot resolve synonyms. Tool purity makes it easy to test independently before the agent invokes it. Later milestones supply this helper as starter code, letting you focus on controller logic without repeatedly rewriting the same search function. Empty queries should return no evidence rather than selecting arbitrary documents.",
+    "why": "A reusable tool should be correct before an agent is allowed to select it. This milestone creates a deterministic local search capability with clear empty-input behavior, providing a stable test fixture for later state transitions, missing-source recovery, and execution-budget enforcement.",
+    "example": {
+      "code": "query = set(\"retry policy\".split())\ndoc = {\"id\":\"ops\",\"text\":\"retry once\"}\nprint(bool(query & set(doc[\"text\"].split())))",
+      "explanation": "The intersection checks whether the document contains any query token. It returns a relevance signal, not a final answer or a model judgment. The project wraps this test across records and returns ids only, preserving a separation between search and reading that the agent controller can exercise in later milestones."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Does this tool execute a semantic model?",
+      "options": [
+        "No",
+        "Yes"
+      ],
+      "answer": "No",
+      "explanation": "This is a deterministic lexical tool, not a semantic model execution."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement search_docs(query,docs). Return ids of documents sharing at least one lowercase whitespace token with query, preserving input order. Each doc has id,text. Empty query or documents returns [].",
+      "starter": "def search_docs(query,docs):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def search_docs(query,docs):\n    terms = set(query.lower().split())\n    return [doc[\"id\"] for doc in docs if terms & set(doc[\"text\"].lower().split())]\n",
+      "solutionExplanation": "This is a deterministic lexical tool, not a semantic model execution. Build a query-token set and keep document ids with a nonempty token intersection. Do not report a model call when only Python rules ran.",
+      "tests": [
+        {
+          "name": "Search",
+          "code": "assert search_docs(\"retry\",[{\"id\":\"a\",\"text\":\"retry once\"},{\"id\":\"b\",\"text\":\"cache\"}]) == [\"a\"]",
+          "explanation": "Matching documents return ids."
+        },
+        {
+          "name": "Case",
+          "code": "assert search_docs(\"API\",[{\"id\":\"a\",\"text\":\"api guide\"}]) == [\"a\"]",
+          "explanation": "Case is normalized."
+        },
+        {
+          "name": "Empty",
+          "code": "assert search_docs(\"\",[{\"id\":\"a\",\"text\":\"anything\"}]) == []",
+          "explanation": "Empty queries cannot select arbitrary evidence."
+        }
+      ],
+      "hints": [
+        "This is a deterministic lexical tool, not a semantic model execution.",
+        "Build a query-token set and keep document ids with a nonempty token intersection."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not report a model call when only Python rules ran.",
+      "Do not mix reading and answering into the search-tool contract."
+    ],
+    "xp": 80,
+    "tags": [
+      "agents",
+      "project",
+      "tools"
+    ],
+    "project": {
+      "id": "agents-capstone",
+      "title": "A bounded research agent",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "agents-project-state",
+    "module": "agents",
+    "section": "A bounded research agent",
+    "title": "Project 2/3: select tools from state",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "agents-project-tools"
+    ],
+    "objectives": [
+      "Explain project 2/3: select tools from state in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The controller now chooses a tool from explicit state. In the search phase it invokes the search helper and selects the first hit. A successful search moves to read; no hits produce a completed abstention. In the read phase it looks up the selected id and copies the source text into the answer. If the source disappeared, it returns a clear unavailable message instead of crashing or inventing content.\n\nEvery transition returns a new state and appends the executed tool name to a new trace list. Completed state remains unchanged. This is a simulated policy, but the tool calls and state changes are real Python execution. The two-phase design creates observable intermediate state and a natural place for future authorization, retries, or human review. Do not hide the trace behind a fabricated natural-language account of what the agent supposedly did.",
+    "why": "Explicit state-driven tool selection makes the research process inspectable. Handling no results and disappearing sources establishes useful recovery behavior before adding model uncertainty, while immutable transitions preserve snapshots that can be replayed during debugging or compared in automated trajectory tests.",
+    "example": {
+      "code": "state = {\"query\":\"retry\",\"phase\":\"search\",\"trace\":[]}\nnext_state = {**state,\"phase\":\"read\",\"selected\":\"ops\",\"trace\":[*state[\"trace\"],\"search\"]}\nprint(next_state[\"phase\"])",
+      "explanation": "The next state records both a control-flow change and the tool observation needed for the next action. It does not modify the old trace. The project turns this illustrated transition into executable logic, then adds the read phase and explicit missing-evidence branches so every phase has a defined outcome."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "After a successful search, which phase reads the selected id?",
+      "options": [
+        "read",
+        "search forever",
+        "unknown"
+      ],
+      "answer": "read",
+      "explanation": "A successful search selects an id and advances to the read phase."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement agent_step(state,docs) using supplied search_docs. Default phase is search. Search sets selected to first hit, phase read, answer None; no hit sets selected None, phase done, answer \"No evidence.\". Read sets phase done and answer to selected text or \"Source unavailable.\". Append executed tool to trace; done/other phases return a copy unchanged. Preserve other fields.",
+      "starter": "def search_docs(query,docs):\n    terms = set(query.lower().split())\n    return [doc[\"id\"] for doc in docs if terms & set(doc[\"text\"].lower().split())]\n\ndef agent_step(state,docs):\n    # Implement the state transitions described above.\n    pass\n",
+      "solution": "def search_docs(query,docs):\n    terms = set(query.lower().split())\n    return [doc[\"id\"] for doc in docs if terms & set(doc[\"text\"].lower().split())]\n\ndef agent_step(state,docs):\n    phase = state.get(\"phase\",\"search\")\n    if phase == \"search\":\n        hits = search_docs(state[\"query\"],docs)\n        return {**state,\"phase\":\"read\" if hits else \"done\",\"selected\":hits[0] if hits else None,\"answer\":None if hits else \"No evidence.\",\"trace\":[*state.get(\"trace\",[]),\"search\"]}\n    if phase == \"read\":\n        doc = next((d for d in docs if d[\"id\"] == state[\"selected\"]),None)\n        return {**state,\"phase\":\"done\",\"answer\":doc[\"text\"] if doc else \"Source unavailable.\",\"trace\":[*state.get(\"trace\",[]),\"read\"]}\n    return dict(state)\n",
+      "solutionExplanation": "A successful search selects an id and advances to the read phase. Copy state, append tool names immutably, and handle missing evidence before returning the next phase. Do not invent source text when a selected document disappears.",
+      "tests": [
+        {
+          "name": "Search transition",
+          "code": "assert agent_step({\"query\":\"api\",\"trace\":[]},[{\"id\":\"a\",\"text\":\"api\"}])[\"phase\"] == \"read\"",
+          "explanation": "Search chooses a read action."
+        },
+        {
+          "name": "Missing source",
+          "code": "assert agent_step({\"query\":\"api\",\"phase\":\"read\",\"selected\":\"missing\",\"trace\":[\"search\"]},[])[\"answer\"] == \"Source unavailable.\"",
+          "explanation": "Missing sources become explicit observations."
+        },
+        {
+          "name": "No evidence",
+          "code": "assert agent_step({\"query\":\"x\",\"trace\":[]},[])[\"answer\"] == \"No evidence.\"",
+          "explanation": "Empty retrieval completes with abstention."
+        }
+      ],
+      "hints": [
+        "A successful search selects an id and advances to the read phase.",
+        "Copy state, append tool names immutably, and handle missing evidence before returning the next phase."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not invent source text when a selected document disappears.",
+      "Do not append directly to a previous snapshot trace."
+    ],
+    "xp": 80,
+    "tags": [
+      "agents",
+      "project",
+      "state"
+    ],
+    "project": {
+      "id": "agents-capstone",
+      "title": "A bounded research agent",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "agents-project-run",
+    "module": "agents",
+    "section": "A bounded research agent",
+    "title": "Project 3/3: run and inspect the agent",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "agents-project-state"
+    ],
+    "objectives": [
+      "Explain project 3/3: run and inspect the agent in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The final milestone runs the state machine within an application-controlled budget. Initialize query, search phase, empty trace, and no answer. Repeatedly call the supplied transition function until the state is done or the step allowance is exhausted. Return the actual trace and a mode field identifying simulated policy execution.\n\nA completed run may contain an answer or an explicit missing-evidence message. Budget exhaustion is a different terminal status and must not be reported as success merely because one tool ran. This distinction mirrors production agent evaluation: task outcome, policy compliance, and resource use are separate facts. The project uses two tools and deterministic selection, with no external side effects. Future LLM integration can replace the decision policy while retaining the same bounded executor, trace contract, and tests for unavailable evidence and incomplete execution.",
+    "why": "A complete agent needs a reliable stopping condition as well as working tools. This milestone integrates selection, state, recovery, and a hard budget into a runnable artifact, giving learners an honest simulated baseline that can later host a real-model policy without losing observability.",
+    "example": {
+      "code": "state = {\"phase\":\"search\",\"trace\":[]}\nbudget = 1\nfor _ in range(budget):\n    state = {**state,\"phase\":\"read\",\"trace\":[*state[\"trace\"],\"search\"]}\nprint(state[\"phase\"])  # not done yet",
+      "explanation": "One permitted step can perform a search without completing the task. The controller must preserve that distinction instead of returning an enthusiastic success message. The final project checks phase after execution and reports budget exhaustion when reading has not happened, while returning the actual trace so users can inspect progress."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "One search ran but reading never happened. Is the task complete?",
+      "options": [
+        "No",
+        "Yes"
+      ],
+      "answer": "No",
+      "explanation": "Running a tool is not equivalent to completing the requested task."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement run_agent(query,docs,max_steps=4) using supplied agent_step. Initialize {query,phase:\"search\",trace:[],answer:None}. Execute at most max(0,max_steps) transitions, stopping once done. Return {mode:\"simulated\",status:\"done\" or \"budget_exhausted\",answer,trace}. Preserve any completed abstention answer.",
+      "starter": "def search_docs(query,docs):\n    terms = set(query.lower().split())\n    return [doc[\"id\"] for doc in docs if terms & set(doc[\"text\"].lower().split())]\n\ndef agent_step(state,docs):\n    phase = state.get(\"phase\",\"search\")\n    if phase == \"search\":\n        hits = search_docs(state[\"query\"],docs)\n        return {**state,\"phase\":\"read\" if hits else \"done\",\"selected\":hits[0] if hits else None,\"answer\":None if hits else \"No evidence.\",\"trace\":[*state.get(\"trace\",[]),\"search\"]}\n    if phase == \"read\":\n        doc = next((d for d in docs if d[\"id\"] == state[\"selected\"]),None)\n        return {**state,\"phase\":\"done\",\"answer\":doc[\"text\"] if doc else \"Source unavailable.\",\"trace\":[*state.get(\"trace\",[]),\"read\"]}\n    return dict(state)\n\ndef run_agent(query,docs,max_steps=4):\n    # Implement the bounded controller.\n    pass\n",
+      "solution": "def search_docs(query,docs):\n    terms = set(query.lower().split())\n    return [doc[\"id\"] for doc in docs if terms & set(doc[\"text\"].lower().split())]\n\ndef agent_step(state,docs):\n    phase = state.get(\"phase\",\"search\")\n    if phase == \"search\":\n        hits = search_docs(state[\"query\"],docs)\n        return {**state,\"phase\":\"read\" if hits else \"done\",\"selected\":hits[0] if hits else None,\"answer\":None if hits else \"No evidence.\",\"trace\":[*state.get(\"trace\",[]),\"search\"]}\n    if phase == \"read\":\n        doc = next((d for d in docs if d[\"id\"] == state[\"selected\"]),None)\n        return {**state,\"phase\":\"done\",\"answer\":doc[\"text\"] if doc else \"Source unavailable.\",\"trace\":[*state.get(\"trace\",[]),\"read\"]}\n    return dict(state)\n\ndef run_agent(query,docs,max_steps=4):\n    state = {\"query\":query,\"phase\":\"search\",\"trace\":[],\"answer\":None}\n    for _ in range(max(0,max_steps)):\n        if state[\"phase\"] == \"done\":\n            break\n        state = agent_step(state,docs)\n    return {\"mode\":\"simulated\",\"status\":\"done\" if state[\"phase\"]==\"done\" else \"budget_exhausted\",\"answer\":state[\"answer\"],\"trace\":state[\"trace\"]}\n",
+      "solutionExplanation": "Running a tool is not equivalent to completing the requested task. Loop within a nonnegative budget, stop on done, and derive status from final state rather than call count. Do not claim a real model ran in this simulated policy project.",
+      "tests": [
+        {
+          "name": "Complete",
+          "code": "assert run_agent(\"retry\",[{\"id\":\"a\",\"text\":\"retry once\"}]) == {\"mode\":\"simulated\",\"status\":\"done\",\"answer\":\"retry once\",\"trace\":[\"search\",\"read\"]}",
+          "explanation": "The agent searches, reads, and completes."
+        },
+        {
+          "name": "Budget",
+          "code": "assert run_agent(\"retry\",[{\"id\":\"a\",\"text\":\"retry once\"}],1)[\"status\"] == \"budget_exhausted\"",
+          "explanation": "Partial execution is not completion."
+        },
+        {
+          "name": "No evidence",
+          "code": "assert run_agent(\"missing\",[]) == {\"mode\":\"simulated\",\"status\":\"done\",\"answer\":\"No evidence.\",\"trace\":[\"search\"]}",
+          "explanation": "The empty-result path terminates safely."
+        }
+      ],
+      "hints": [
+        "Running a tool is not equivalent to completing the requested task.",
+        "Loop within a nonnegative budget, stop on done, and derive status from final state rather than call count."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not claim a real model ran in this simulated policy project.",
+      "Do not award successful-task status merely because the first action executed."
+    ],
+    "xp": 80,
+    "tags": [
+      "agents",
+      "project",
+      "loops"
+    ],
+    "project": {
+      "id": "agents-capstone",
+      "title": "A bounded research agent",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

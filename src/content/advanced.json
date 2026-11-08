@@ -1,0 +1,1525 @@
+[
+  {
+    "id": "advanced-generators",
+    "module": "advanced",
+    "section": "Python protocols",
+    "title": "Iterators and generators for streaming",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain iterators and generators for streaming in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "An iterable can produce an iterator, and an iterator yields one item at a time until it raises StopIteration. A list is iterable and can be iterated repeatedly; a particular iterator is consumed as it advances. A generator function contains yield. Calling it creates a generator object without running the body to completion, and each iteration resumes the suspended function until its next yield.\n\nStreaming helps when a document corpus is larger than memory or when downstream work can begin before all input has arrived. It does not make each item free: keeping a list of every yielded result removes the memory benefit. A batching generator should yield a final partial batch rather than discard remaining documents. Validate its batch size explicitly so an invalid request does not cause a stalled loop or surprising empty batches.",
+    "why": "Embedding pipelines often need bounded batches from a long stream of documents. Generators let you process and release one batch at a time, reducing peak memory while preserving order and handling a final batch smaller than the service limit.",
+    "example": {
+      "code": "def nonblank(lines):\n    for line in lines:\n        text = line.strip()\n        if text:\n            yield text\n\nstream = nonblank([\" a \", \"\", \" b \"])\nprint(next(stream))  # a\nprint(list(stream))  # ['b']; the first item is consumed.",
+      "explanation": "The function does not build an output list. next resumes it until the first nonblank line is yielded, and list consumes only what remains. This illustrates the one-pass nature of a generator object. The exercise adds bounded buffering: it should retain only the current batch while yielding complete batches and the final remainder."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "After next(g) consumes one item, list(g) includes that item again.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "A generator yields one batch at a time; previously consumed items do not reappear."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement batches(items, size) as a generator. Accept any iterable and positive integer size. Yield lists of at most size items in order, including a final partial batch. Empty input yields nothing; size <= 0 raises ValueError when iterated.",
+      "starter": "def batches(items, size):\n    pass",
+      "solution": "def batches(items, size):\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    batch=[]\n    for item in items:\n        batch.append(item)\n        if len(batch)==size:\n            yield batch\n            batch=[]\n    if batch:\n        yield batch",
+      "solutionExplanation": "A generator yields one batch at a time; previously consumed items do not reappear. Allocate a new list after each yield, then yield the final list only if it is nonempty. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Remainder",
+          "code": "assert list(batches(range(5),2))==[[0,1],[2,3],[4]]",
+          "explanation": "Do not drop the partial last batch."
+        },
+        {
+          "name": "Iterator and empty",
+          "code": "assert list(batches(iter([1,2]),3))==[[1,2]] and list(batches([],2))==[]",
+          "explanation": "Support one-pass iterators and empty streams."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    list(batches([1],0))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Nonpositive size accepted\")",
+          "explanation": "Generator bodies run during iteration, including validation."
+        }
+      ],
+      "hints": [
+        "A generator yields one batch at a time; previously consumed items do not reappear.",
+        "Allocate a new list after each yield, then yield the final list only if it is nonempty."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Reusing and clearing the same yielded list object.",
+      "Forgetting the final partial batch."
+    ],
+    "xp": 20,
+    "tags": [
+      "iterators",
+      "generators",
+      "streaming"
+    ]
+  },
+  {
+    "id": "advanced-decorators",
+    "module": "advanced",
+    "section": "Python protocols",
+    "title": "Decorators wrap behavior without losing identity",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-generators"
+    ],
+    "objectives": [
+      "Explain decorators wrap behavior without losing identity in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A decorator is a function that receives a callable and returns another callable. The @decorator syntax replaces a function with the decorated result when its definition is executed. A wrapper can run code before or after the original call, but it should preserve the original result and exception behavior unless changing them is the explicit purpose. *args and **kwargs let the wrapper forward arbitrary positional and keyword arguments.\n\nfunctools.wraps copies useful metadata such as the original name and docstring and adds a __wrapped__ link for inspection. Without it, logging and debugging often report an unhelpful wrapper name. A call-counting decorator is a small example of instrumentation. Count attempts before invoking the function if failed calls should count; count afterward if only successful calls matter. That distinction is part of the decorator’s contract.",
+    "why": "AI clients need timing, logging, and request-count instrumentation around many methods. A well-behaved decorator adds that cross-cutting behavior while preserving callable arguments, return values, exceptions, and metadata that debugging tools and tests rely on.",
+    "example": {
+      "code": "from functools import wraps\n\ndef announce(fn):\n    @wraps(fn)\n    def wrapped(*args, **kwargs):\n        print(\"Calling\", fn.__name__)\n        return fn(*args, **kwargs)\n    return wrapped\n\n@announce\ndef double(value):\n    return value * 2\n\nprint(double(3), double.__name__)",
+      "explanation": "The decorator returns a new callable that prints before forwarding the call. wraps keeps double’s name visible even though execution passes through wrapped. Returning the original function’s result is essential: omitting return would replace every successful result with None. The exercise uses an attribute on the wrapper to expose an attempt counter instead of printing instrumentation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does functools.wraps preserve?",
+      "options": [
+        "Function metadata",
+        "Every global variable",
+        "A network connection"
+      ],
+      "answer": "Function metadata",
+      "explanation": "A wrapper should forward *args and **kwargs and return the wrapped result."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement counted(fn). Return a wrapper with calls initially 0. Increment before every attempted call, forward args/kwargs, preserve result and exceptions, and retain metadata with wraps.",
+      "starter": "from functools import wraps\n\ndef counted(fn):\n    pass",
+      "solution": "from functools import wraps\n\ndef counted(fn):\n    @wraps(fn)\n    def wrapper(*args, **kwargs):\n        wrapper.calls += 1\n        return fn(*args, **kwargs)\n    wrapper.calls = 0\n    return wrapper",
+      "solutionExplanation": "A wrapper should forward *args and **kwargs and return the wrapped result. Increment wrapper.calls before calling fn and decorate the wrapper with @wraps(fn). The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Forward",
+          "code": "def scale(x,factor=2): return x*factor\nf=counted(scale); assert f(3,factor=4)==12 and f.calls==1",
+          "explanation": "Forward both argument styles and preserve results."
+        },
+        {
+          "name": "Metadata",
+          "code": "def original():\n    \"A useful docstring.\"\n    return 1\nf=counted(original); assert f.__name__==\"original\" and f.__doc__==original.__doc__ and f.calls==0",
+          "explanation": "Instrumentation should preserve identity and start at zero."
+        },
+        {
+          "name": "Failure counts",
+          "code": "def fail(): raise ValueError(\"bad\")\nf=counted(fail)\ntry:\n    f()\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Exception swallowed\")\nassert f.calls==1",
+          "explanation": "Attempt counting includes failures and does not suppress them."
+        }
+      ],
+      "hints": [
+        "A wrapper should forward *args and **kwargs and return the wrapped result.",
+        "Increment wrapper.calls before calling fn and decorate the wrapper with @wraps(fn)."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Forgetting to return fn’s result.",
+      "Counting only successes when the contract counts attempts."
+    ],
+    "xp": 20,
+    "tags": [
+      "decorators",
+      "instrumentation"
+    ]
+  },
+  {
+    "id": "advanced-context-managers",
+    "module": "advanced",
+    "section": "Python protocols",
+    "title": "Context managers make cleanup reliable",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-decorators"
+    ],
+    "objectives": [
+      "Explain context managers make cleanup reliable in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A context manager defines setup and cleanup around a with block. The underlying protocol uses __enter__ and __exit__, but contextlib.contextmanager lets you write the same structure as a generator with one yield. Code before yield performs setup; the yielded value is bound after as; code in a finally block performs cleanup whether the body succeeds or raises.\n\nUse context managers for resources that must be released, such as files, locks, temporary directories, and client sessions. Cleanup is different from swallowing errors. Unless suppression is intentional, the original exception should still reach the caller after cleanup runs. A teaching event log makes this lifecycle visible without a real network connection. The same reasoning applies when a service request fails halfway through a session and you still need to release its resources reliably.",
+    "why": "Long-running AI workers repeatedly open files, connections, and temporary workspaces. Reliable cleanup prevents resource leaks under failure, and preserving the original exception gives monitoring systems the information needed to diagnose why a task did not finish.",
+    "example": {
+      "code": "from contextlib import contextmanager\n\n@contextmanager\ndef tagged(events):\n    events.append(\"open\")\n    try:\n        yield \"resource\"\n    finally:\n        events.append(\"close\")\n\nevents=[]\nwith tagged(events) as value:\n    events.append(value)\nprint(events)",
+      "explanation": "The yielded string becomes value inside the with block. The finally clause runs when that block exits, including exceptional exits. The visible event list shows setup, body, and cleanup in order. A real context manager would close a resource instead of appending a word; the exercise adds a caller-chosen name to make independent lifecycles testable."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which block guarantees cleanup after an exception?",
+      "options": [
+        "finally",
+        "else only",
+        "An unrelated if"
+      ],
+      "answer": "finally",
+      "explanation": "Place cleanup in a finally block around the yield."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement session(events, name) as a context manager. Append \"open:\"+name on entry, yield name, and always append \"close:\"+name on exit. Do not suppress body exceptions.",
+      "starter": "from contextlib import contextmanager\n\n@contextmanager\ndef session(events, name):\n    pass",
+      "solution": "from contextlib import contextmanager\n\n@contextmanager\ndef session(events, name):\n    events.append(\"open:\"+name)\n    try:\n        yield name\n    finally:\n        events.append(\"close:\"+name)",
+      "solutionExplanation": "Place cleanup in a finally block around the yield. Append the open event, try to yield name, then append the close event in finally without catching the body exception. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Normal lifecycle",
+          "code": "events=[]\nwith session(events,\"ai\") as value:\n    assert value==\"ai\"; events.append(\"body\")\nassert events==[\"open:ai\",\"body\",\"close:ai\"]",
+          "explanation": "Setup and cleanup bracket the body."
+        },
+        {
+          "name": "Failure cleanup",
+          "code": "events=[]\ntry:\n    with session(events,\"x\"):\n        raise ValueError(\"failed\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Exception swallowed\")\nassert events==[\"open:x\",\"close:x\"]",
+          "explanation": "Cleanup must happen even when the body fails."
+        },
+        {
+          "name": "Nested",
+          "code": "events=[]\nwith session(events,\"outer\"):\n    with session(events,\"inner\"):\n        pass\nassert events==[\"open:outer\",\"open:inner\",\"close:inner\",\"close:outer\"]",
+          "explanation": "Nested resources close in reverse entry order."
+        }
+      ],
+      "hints": [
+        "Place cleanup in a finally block around the yield.",
+        "Append the open event, try to yield name, then append the close event in finally without catching the body exception."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Placing cleanup only after yield without finally.",
+      "Suppressing exceptions accidentally and reporting false success."
+    ],
+    "xp": 20,
+    "tags": [
+      "context-managers",
+      "resources"
+    ]
+  },
+  {
+    "id": "advanced-functional",
+    "module": "advanced",
+    "section": "Python protocols",
+    "title": "Lambda functions and stable transformations",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-context-managers"
+    ],
+    "objectives": [
+      "Explain lambda functions and stable transformations in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "Functions are values in Python: they can be passed as arguments and returned from other functions. A lambda creates a small anonymous function containing one expression. It is useful for a short key function in sorted, but a named def is clearer when logic needs branching, documentation, or reuse. Functional patterns separate the operation from the data it processes.\n\nsorted returns a new list and accepts a key function describing how to compare records. Python sorting is stable, so equal keys retain their original relative order. A tuple key can express a primary and secondary criterion, such as descending score and ascending identifier. Negating a numeric score changes descending order into an ascending key comparison. Avoid changing input records while computing keys; a pure transformation is easier to test and safe to reuse in several pipeline stages.",
+    "why": "Retrieval and evaluation code frequently rank structured records. Small pure key functions make ranking policy explicit, while deterministic tie-breaking ensures repeated runs produce the same displayed order even when several documents have identical similarity scores.",
+    "example": {
+      "code": "rows=[{\"id\":\"b\",\"score\":0.7},{\"id\":\"a\",\"score\":0.7},{\"id\":\"c\",\"score\":0.9}]\nranked=sorted(rows,key=lambda row:(-row[\"score\"],row[\"id\"]))\nprint([row[\"id\"] for row in ranked])  # ['c', 'a', 'b']",
+      "explanation": "The key is a tuple. Python compares the negated score first, putting larger original scores earlier, then compares IDs when the scores tie. sorted produces a new outer list and does not rearrange rows in place. The dictionaries themselves are shared, so this is suitable for read-only ranking rather than a promise of deep-copy isolation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which key sorts by descending score then ascending ID?",
+      "options": [
+        "(row[\"score\"], row[\"id\"])",
+        "(-row[\"score\"], row[\"id\"])",
+        "row[\"id\"]"
+      ],
+      "answer": "(-row[\"score\"], row[\"id\"])",
+      "explanation": "Use a tuple key of negative score followed by ID."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement ranked_ids(rows). Rows have string id and numeric score. Return IDs ordered by descending score, breaking ties by ascending ID. Do not reorder the input list.",
+      "starter": "def ranked_ids(rows):\n    pass",
+      "solution": "def ranked_ids(rows):\n    return [row[\"id\"] for row in sorted(rows,key=lambda row:(-row[\"score\"],row[\"id\"]))]",
+      "solutionExplanation": "Use a tuple key of negative score followed by ID. Call sorted(rows, key=...) and then extract each row’s ID into a new list. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Ranking",
+          "code": "assert ranked_ids([{\"id\":\"x\",\"score\":0.2},{\"id\":\"y\",\"score\":0.8}])==[\"y\",\"x\"]",
+          "explanation": "Higher scores come first."
+        },
+        {
+          "name": "Ties",
+          "code": "assert ranked_ids([{\"id\":\"b\",\"score\":1},{\"id\":\"a\",\"score\":1}])==[\"a\",\"b\"]",
+          "explanation": "The secondary key makes ties deterministic."
+        },
+        {
+          "name": "Nonmutation and empty",
+          "code": "rows=[{\"id\":\"b\",\"score\":0},{\"id\":\"a\",\"score\":1}]; ranked_ids(rows); assert rows[0][\"id\"]==\"b\" and ranked_ids([])==[]",
+          "explanation": "sorted must not mutate the input list."
+        }
+      ],
+      "hints": [
+        "Use a tuple key of negative score followed by ID.",
+        "Call sorted(rows, key=...) and then extract each row’s ID into a new list."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using reverse=True on both keys and reversing ID order too.",
+      "Using list.sort and mutating the caller’s ordering."
+    ],
+    "xp": 20,
+    "tags": [
+      "lambda",
+      "functional-programming",
+      "sorting"
+    ]
+  },
+  {
+    "id": "advanced-dataclasses",
+    "module": "advanced",
+    "section": "Python protocols",
+    "title": "Dataclasses for structured records",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-functional"
+    ],
+    "objectives": [
+      "Explain dataclasses for structured records in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A dataclass generates common methods such as __init__, __repr__, and equality from annotated fields. It is useful for records with a known structure, such as a document chunk or model response. Type annotations describe field expectations but do not perform automatic runtime validation. A frozen dataclass prevents ordinary field reassignment, though it does not make mutable objects stored inside fields deeply immutable.\n\nMutable defaults need a factory. field(default_factory=list) creates a fresh list for each instance, while a single shared list would mix independent records. Add methods when they express behavior naturally associated with the record, but keep external service calls separate from simple data containers. Equality compares field values, which is useful in tests. Dataclasses make structure visible and reduce boilerplate without replacing validation at boundaries where untrusted data enters the program.",
+    "why": "AI code passes document chunks, token counts, and model responses through many layers. A dataclass makes those fields discoverable and comparable in tests, while correct default factories prevent tags or metadata from being accidentally shared across unrelated records.",
+    "example": {
+      "code": "from dataclasses import dataclass, field\n\n@dataclass\nclass Chunk:\n    text: str\n    tags: list[str] = field(default_factory=list)\n\na=Chunk(\"first\"); b=Chunk(\"second\")\na.tags.append(\"review\")\nprint(a.tags,b.tags)  # ['review'] []",
+      "explanation": "The generated constructor accepts text and optionally tags. The factory is called for every omitted tags argument, so the two instances own different lists. Appending to a.tags therefore leaves b.tags empty. The exercise uses the same record pattern with an identifier and derives a word count from text rather than storing a value that could become stale."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What creates a fresh list for every dataclass instance?",
+      "options": [
+        "field(default_factory=list)",
+        "tags=[]",
+        "A shared global list"
+      ],
+      "answer": "field(default_factory=list)",
+      "explanation": "Use field(default_factory=list) for instance-owned mutable defaults."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement dataclass Document with id: str, text: str, and tags: list[str] defaulting to a fresh list. word_count() returns the whitespace-separated text word count.",
+      "starter": "from dataclasses import dataclass, field\n\n@dataclass\nclass Document:\n    # Add id, text, tags, and word_count().\n    pass",
+      "solution": "from dataclasses import dataclass, field\n\n@dataclass\nclass Document:\n    id: str\n    text: str\n    tags: list[str] = field(default_factory=list)\n\n    def word_count(self):\n        return len(self.text.split())",
+      "solutionExplanation": "Use field(default_factory=list) for instance-owned mutable defaults. Annotate id and text, add the tags factory, and derive word_count from self.text.split(). The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Fields",
+          "code": "d=Document(\"a\",\"one two\"); assert d.id==\"a\" and d.word_count()==2",
+          "explanation": "Generated initialization and derived behavior work together."
+        },
+        {
+          "name": "Independent defaults",
+          "code": "a=Document(\"a\",\"x\"); b=Document(\"b\",\"y\"); a.tags.append(\"z\"); assert b.tags==[]",
+          "explanation": "Each omitted tags value must be newly allocated."
+        },
+        {
+          "name": "Blank and equality",
+          "code": "assert Document(\"a\",\" \").word_count()==0 and Document(\"x\",\"y\")==Document(\"x\",\"y\")",
+          "explanation": "Dataclasses provide value equality; blank text has zero words."
+        }
+      ],
+      "hints": [
+        "Use field(default_factory=list) for instance-owned mutable defaults.",
+        "Annotate id and text, add the tags factory, and derive word_count from self.text.split()."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Assuming dataclass annotations validate external JSON automatically.",
+      "Storing a redundant word count that becomes stale after text changes."
+    ],
+    "xp": 20,
+    "tags": [
+      "dataclasses",
+      "typing"
+    ]
+  },
+  {
+    "id": "advanced-checkpoint-protocols",
+    "module": "advanced",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: stream ranked document records",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "advanced-dataclasses"
+    ],
+    "objectives": [
+      "Explain checkpoint: stream ranked document records in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "This checkpoint combines generator consumption, pure sorting, and explicit record contracts. A stream of scored documents must be materialized once because global ranking requires seeing every score. This is an important limitation: generators reduce memory only when the downstream algorithm can operate incrementally. Sorting an entire stream still needs storage proportional to the collection size.\n\nAfter ranking by descending score and ascending ID, yield lists of identifiers in fixed-size batches. Validate the batch size and preserve the final partial batch. Keep ranking separate from batching in your reasoning even if the implementation is compact. A one-pass input iterator exposes accidental double iteration, and tied scores expose unstable ranking policy. The output generator lets a consumer process ranked batches one at a time after the initial sorting work has completed.",
+    "why": "Search and evaluation jobs sometimes need a global ranking followed by bounded downstream processing. Recognizing where materialization is necessary prevents false claims of constant-memory streaming, while deterministic ranking and correct batching preserve useful behavior across varying corpus sizes.",
+    "example": {
+      "code": "rows=iter([{\"id\":\"b\",\"score\":0.4},{\"id\":\"a\",\"score\":0.9}])\nranked=sorted(rows,key=lambda row:(-row[\"score\"],row[\"id\"]))\nprint([row[\"id\"] for row in ranked])\nprint(list(rows))  # []: sorting consumed the input iterator.",
+      "explanation": "The example makes iterator consumption visible: sorted reads the entire stream and returns a new list. The original iterator is exhausted afterward. This is correct for global ranking but must be understood when composing stages. The checkpoint adds batching after this one materialization and checks both stable tie-breaking and the final smaller batch."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does sorting an entire generator retain constant memory regardless of its length?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Global sorting materializes the stream; generator output does not remove that cost."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement ranked_batches(rows, size) as a generator. Consume an iterable of {id,score} records once, sort by descending score then ascending ID, and yield ID lists of positive size with a possible final partial batch. Invalid size raises ValueError when consumed.",
+      "starter": "def ranked_batches(rows, size):\n    pass",
+      "solution": "def ranked_batches(rows, size):\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    ranked=sorted(rows,key=lambda row:(-row[\"score\"],row[\"id\"]))\n    for start in range(0,len(ranked),size):\n        yield [row[\"id\"] for row in ranked[start:start+size]]",
+      "solutionExplanation": "Global sorting materializes the stream; generator output does not remove that cost. Sort once, then iterate start offsets with range(0, len(ranked), size) and yield ID slices. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Ranking and batching",
+          "code": "rows=iter([{\"id\":\"b\",\"score\":1},{\"id\":\"a\",\"score\":1},{\"id\":\"c\",\"score\":0}]); assert list(ranked_batches(rows,2))==[[\"a\",\"b\"],[\"c\"]]",
+          "explanation": "Materialize once, order ties, and preserve the remainder."
+        },
+        {
+          "name": "Empty",
+          "code": "assert list(ranked_batches([],3))==[]",
+          "explanation": "An empty ranking yields no batches."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    list(ranked_batches([],0))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid size accepted\")",
+          "explanation": "Validation must apply even to an empty stream."
+        }
+      ],
+      "hints": [
+        "Global sorting materializes the stream; generator output does not remove that cost.",
+        "Sort once, then iterate start offsets with range(0, len(ranked), size) and yield ID slices."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Iterating a consumed input stream a second time.",
+      "Claiming the sorting stage uses constant memory."
+    ],
+    "xp": 50,
+    "tags": [
+      "generators",
+      "sorting",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "advanced-typing-protocols",
+    "module": "advanced",
+    "section": "Reusable services",
+    "title": "Structural typing and dependency injection",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-checkpoint-protocols"
+    ],
+    "objectives": [
+      "Explain structural typing and dependency injection in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "Python’s typing.Protocol describes the methods or attributes an object should provide without requiring it to inherit from a particular base class. This is structural typing: a component is compatible because it has the required shape. Static type checkers use the protocol, while runtime code still calls ordinary Python methods. A protocol is not a substitute for checking untrusted data or catching documented service failures.\n\nDependency injection means passing a dependency into a function or constructor instead of creating a specific implementation internally. A text-scoring pipeline can receive any object with a score(text) method. Tests can supply a deterministic fake, and production can supply a model-backed scorer. Keep the protocol small and focused on what the consumer actually needs. This reduces coupling and makes the boundary between local logic and external behavior explicit.",
+    "why": "AI providers and local models expose different clients. A small injected interface lets application logic remain stable while tests replace paid or nondeterministic calls with predictable fakes, making correctness checks fast and independent of network access.",
+    "example": {
+      "code": "from typing import Protocol\n\nclass Scorer(Protocol):\n    def score(self, text: str) -> float: ...\n\nclass LengthScorer:\n    def score(self,text): return float(len(text))\n\ndef evaluate(text, scorer: Scorer):\n    return scorer.score(text)\n\nprint(evaluate(\"AI\",LengthScorer()))",
+      "explanation": "LengthScorer does not inherit from Scorer, yet it provides the required score method. evaluate depends only on that method, not on how scores are computed. The protocol documents this narrow boundary for static tools. The exercise extends evaluation to a batch while preserving order and making exactly one dependency call per text."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which object can satisfy a scoring protocol?",
+      "options": [
+        "Only a direct subclass",
+        "Any object with the required compatible method",
+        "Only a dictionary"
+      ],
+      "answer": "Any object with the required compatible method",
+      "explanation": "Depend on the score method’s behavior rather than a concrete client class."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement score_batch(texts, scorer). scorer supplies score(text). Call it once per text, preserve input order, and return the results unchanged. Empty input makes no calls.",
+      "starter": "def score_batch(texts, scorer):\n    pass",
+      "solution": "def score_batch(texts, scorer):\n    return [scorer.score(text) for text in texts]",
+      "solutionExplanation": "Depend on the score method’s behavior rather than a concrete client class. A list comprehension can call scorer.score(text) exactly once for each input. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Injected behavior",
+          "code": "class Fake:\n    def score(self,text): return len(text)*2\nassert score_batch([\"a\",\"abc\"],Fake())==[2,6]",
+          "explanation": "Use the injected implementation rather than a hardcoded formula."
+        },
+        {
+          "name": "Calls and order",
+          "code": "class Recorder:\n    def __init__(self): self.calls=[]\n    def score(self,text): self.calls.append(text); return text.upper()\nr=Recorder(); assert score_batch([\"b\",\"a\"],r)==[\"B\",\"A\"] and r.calls==[\"b\",\"a\"]",
+          "explanation": "Call exactly once per text in order."
+        },
+        {
+          "name": "Empty",
+          "code": "class Never:\n    def score(self,text): raise AssertionError(\"Unexpected call\")\nassert score_batch([],Never())==[]",
+          "explanation": "An empty batch must not contact the dependency."
+        }
+      ],
+      "hints": [
+        "Depend on the score method’s behavior rather than a concrete client class.",
+        "A list comprehension can call scorer.score(text) exactly once for each input."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Constructing a real client inside the function and making tests depend on networking.",
+      "Calling the scorer twice while building one result."
+    ],
+    "xp": 20,
+    "tags": [
+      "typing",
+      "protocols",
+      "dependency-injection"
+    ]
+  },
+  {
+    "id": "advanced-async",
+    "module": "advanced",
+    "section": "Reusable services",
+    "title": "Async tasks and bounded concurrency",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-typing-protocols"
+    ],
+    "objectives": [
+      "Explain async tasks and bounded concurrency in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "An async def function returns a coroutine when called. Awaiting it allows execution to continue until it reaches an operation that can suspend, such as asynchronous I/O. This is cooperative concurrency, not automatic parallel CPU execution. A blocking function or expensive pure-Python loop still blocks the event loop unless moved to a suitable executor or redesigned.\n\nasyncio.gather schedules several awaitables and returns results in input order, even if they finish in a different order. A semaphore limits how many tasks enter a protected section simultaneously. This is useful for respecting an API’s concurrency limit without serializing all work. Keep timeouts, cancellation, and failure handling explicit. The exercise uses injected asynchronous operations with no network calls; the pattern is transferable to a real HTTP client whose methods are genuinely asynchronous.",
+    "why": "LLM applications often wait for several independent requests. Bounded async concurrency can overlap that waiting while respecting service limits, but it must preserve result alignment and must not be confused with faster execution of CPU-heavy model computations.",
+    "example": {
+      "code": "import asyncio\n\nasync def double(value):\n    await asyncio.sleep(0)  # Yield control; no real delay.\n    return value*2\n\nasync def demo():\n    return await asyncio.gather(double(2),double(3))\n\n# In a local script: print(asyncio.run(demo()))\n# In an async notebook cell: await demo()",
+      "explanation": "The asynchronous function yields control at sleep(0), allowing another scheduled task to run. gather returns results corresponding to the original argument order. The example deliberately distinguishes local script execution from an already-running event loop. The exercise supplies the coroutine function to gather and adds a semaphore so no more than the requested number of operations run at once."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does async automatically make a CPU-bound Python loop run in parallel?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Async overlaps cooperative waiting; it does not parallelize ordinary CPU loops."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement async bounded_map(values, operation, limit). operation(value) is async. Return results in input order while allowing at most limit simultaneous operation calls. limit <= 0 raises ValueError; empty input returns [].",
+      "starter": "import asyncio\n\nasync def bounded_map(values, operation, limit):\n    pass",
+      "solution": "import asyncio\n\nasync def bounded_map(values, operation, limit):\n    if limit <= 0:\n        raise ValueError(\"limit must be positive\")\n    semaphore=asyncio.Semaphore(limit)\n    async def run(value):\n        async with semaphore:\n            return await operation(value)\n    return await asyncio.gather(*(run(value) for value in values))",
+      "solutionExplanation": "Async overlaps cooperative waiting; it does not parallelize ordinary CPU loops. Create an asyncio.Semaphore(limit), acquire it with async with around await operation(value), then gather the wrappers. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Results",
+          "code": "import asyncio\nasync def op(x):\n    await asyncio.sleep(0)\n    return x*3\nassert asyncio.run(bounded_map([3,1,2],op,2))==[9,3,6]",
+          "explanation": "Output remains aligned with input order."
+        },
+        {
+          "name": "Concurrency bound",
+          "code": "import asyncio\nstate={\"active\":0,\"peak\":0}\nasync def op(x):\n    state[\"active\"]+=1; state[\"peak\"]=max(state[\"peak\"],state[\"active\"])\n    await asyncio.sleep(0)\n    state[\"active\"]-=1\n    return x\nassert asyncio.run(bounded_map([1,2,3,4],op,2))==[1,2,3,4]\nassert state[\"peak\"]<=2",
+          "explanation": "The semaphore must enclose the awaited operation."
+        },
+        {
+          "name": "Empty and invalid",
+          "code": "import asyncio\nasync def op(x): return x\nassert asyncio.run(bounded_map([],op,1))==[]\ntry:\n    asyncio.run(bounded_map([],op,0))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid limit accepted\")",
+          "explanation": "Validate the limit even for empty input."
+        }
+      ],
+      "hints": [
+        "Async overlaps cooperative waiting; it does not parallelize ordinary CPU loops.",
+        "Create an asyncio.Semaphore(limit), acquire it with async with around await operation(value), then gather the wrappers."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Calling a blocking HTTP library inside async code and expecting nonblocking behavior.",
+      "Acquiring the semaphore only while creating a coroutine rather than while awaiting it."
+    ],
+    "xp": 20,
+    "tags": [
+      "async",
+      "concurrency"
+    ]
+  },
+  {
+    "id": "advanced-http",
+    "module": "advanced",
+    "section": "Reusable services",
+    "title": "HTTP responses are transport contracts",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-async"
+    ],
+    "objectives": [
+      "Explain http responses are transport contracts in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "HTTP requests combine a method, URL, headers, and often a body. A response provides a status code, headers, and a body that may or may not be JSON. A 2xx status usually indicates transport-level success, but the application still needs to validate the returned payload. Authentication failures, rate limits, and server errors require different handling rather than one generic retry rule.\n\nIn local Python, libraries such as urllib.request, requests, or httpx can make requests. Set explicit timeouts and avoid logging secret headers. Browser networking also depends on CORS, and this lesson performs no real requests. Instead, a simulated response dictionary exposes the same status-and-body boundary. Separating transport interpretation from domain validation lets you test behavior without a network and avoids confusing a successful HTTP exchange with a correct model answer.",
+    "why": "Hosted AI services communicate over HTTP and can return rate limits, authentication errors, or malformed payloads. Treating those as explicit transport outcomes makes retries safer and prevents application code from assuming that every response body is a valid successful prediction.",
+    "example": {
+      "code": "response={\"status\":200,\"body\":{\"text\":\"hello\"}}\nstatus=response[\"status\"]\nif 200 <= status < 300:\n    print(\"Transport success\")\nelif status==429:\n    print(\"Rate limited\")\nelse:\n    print(\"Request failed\")\n# This dictionary is simulated; no network request was made.",
+      "explanation": "The example distinguishes a successful status range from a rate limit and other failures. It does not yet validate the body or retry a request. A real client obtains these fields from a response object, but the decision logic can remain a pure function. The exercise classifies a limited, documented set of statuses for a retry policy."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which status commonly represents a rate limit?",
+      "options": [
+        "401",
+        "429",
+        "200"
+      ],
+      "answer": "429",
+      "explanation": "Separate success, retry candidates, and fatal responses using explicit status ranges."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement classify_status(status). Return \"success\" for 200–299, \"retryable\" for 429 or 500–599, and \"fatal\" otherwise. This is a teaching policy, not a universal HTTP retry standard.",
+      "starter": "def classify_status(status):\n    pass",
+      "solution": "def classify_status(status):\n    if 200 <= status < 300:\n        return \"success\"\n    if status==429 or 500 <= status < 600:\n        return \"retryable\"\n    return \"fatal\"",
+      "solutionExplanation": "Separate success, retry candidates, and fatal responses using explicit status ranges. Check 200 <= status < 300 first, then status == 429 or 500 <= status < 600. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Success range",
+          "code": "assert classify_status(200)==\"success\" and classify_status(299)==\"success\"",
+          "explanation": "Check the complete inclusive success range."
+        },
+        {
+          "name": "Transient policy",
+          "code": "assert classify_status(429)==\"retryable\" and classify_status(503)==\"retryable\"",
+          "explanation": "Rate limits and server errors are retry candidates under this policy."
+        },
+        {
+          "name": "Boundaries",
+          "code": "assert classify_status(401)==\"fatal\" and classify_status(300)==\"fatal\" and classify_status(600)==\"fatal\"",
+          "explanation": "Do not retry authentication, redirects, or out-of-range statuses automatically."
+        }
+      ],
+      "hints": [
+        "Separate success, retry candidates, and fatal responses using explicit status ranges.",
+        "Check 200 <= status < 300 first, then status == 429 or 500 <= status < 600."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Retrying authentication failures indefinitely.",
+      "Assuming a 200 response proves the model answer is correct."
+    ],
+    "xp": 20,
+    "tags": [
+      "http",
+      "api-clients"
+    ]
+  },
+  {
+    "id": "advanced-client",
+    "module": "advanced",
+    "section": "Reusable services",
+    "title": "Build an API client around an injected transport",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-http"
+    ],
+    "objectives": [
+      "Explain build an api client around an injected transport in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "An API client translates application calls into a service’s transport format and translates responses back into domain values. Keep the public method focused on what callers need, such as generate(prompt), rather than exposing every HTTP detail. Injecting a transport function allows the client to be tested with deterministic responses and keeps service-specific behavior separate from application logic.\n\nValidate inputs before sending a request and validate outputs before returning them. A nonblank prompt is a reasonable boundary for this small client. A successful response must contain string text; otherwise returning a partially valid object would spread malformed data downstream. This simulated client makes no network calls. A real transport would add authentication, request timeouts, and status handling while preserving the same domain contract. Do not store secrets in source code or browser bundles.",
+    "why": "A narrow client wrapper makes switching AI providers easier and keeps tests independent of paid APIs. Injected transport also lets you reproduce unusual response shapes and failures that are difficult to trigger reliably against a live service.",
+    "example": {
+      "code": "def fake_transport(payload):\n    return {\"text\": payload[\"prompt\"].upper()}\n\ndef call_once(prompt, transport):\n    payload={\"prompt\":prompt,\"max_tokens\":32}\n    return transport(payload)[\"text\"]\n\nprint(call_once(\"hello\",fake_transport))\n# Deterministic simulation, not model inference.",
+      "explanation": "The application function constructs the service payload and delegates execution to the supplied transport. The fake returns a deterministic uppercase string so the boundary can be inspected without a model. The exercise adds input and output validation and packages the behavior in a reusable client object, while keeping networking outside the client’s core logic."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why inject the transport?",
+      "options": [
+        "To make deterministic tests possible",
+        "To bypass validation",
+        "To guarantee model accuracy"
+      ],
+      "answer": "To make deterministic tests possible",
+      "explanation": "Injection makes behavior testable without a real service, but validation is still required."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement MiniClient.generate(prompt). Require nonblank string input, send {\"prompt\": stripped_prompt} to the injected transport once, require a dictionary with string text, and return text. Invalid input or response raises ValueError.",
+      "starter": "class MiniClient:\n    def __init__(self, transport):\n        self.transport=transport\n\n    def generate(self, prompt):\n        pass",
+      "solution": "class MiniClient:\n    def __init__(self, transport):\n        self.transport=transport\n\n    def generate(self, prompt):\n        if not isinstance(prompt,str) or not prompt.strip():\n            raise ValueError(\"prompt must be nonblank text\")\n        response=self.transport({\"prompt\":prompt.strip()})\n        if not isinstance(response,dict) or not isinstance(response.get(\"text\"),str):\n            raise ValueError(\"Invalid response\")\n        return response[\"text\"]",
+      "solutionExplanation": "Injection makes behavior testable without a real service, but validation is still required. Validate prompt, call self.transport with a new payload, then validate response[\"text\"] before returning it. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Contract",
+          "code": "calls=[]\ndef transport(payload): calls.append(payload); return {\"text\":\"ok\"}\nassert MiniClient(transport).generate(\" hi \")==\"ok\" and calls==[{\"prompt\":\"hi\"}]",
+          "explanation": "Send only the normalized documented payload."
+        },
+        {
+          "name": "Invalid input",
+          "code": "def never(payload): raise AssertionError(\"Should not call transport\")\ntry:\n    MiniClient(never).generate(\" \")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Blank prompt accepted\")",
+          "explanation": "Validate before a service call."
+        },
+        {
+          "name": "Invalid output",
+          "code": "for response in [{}, {\"text\":3}, []]:\n    try:\n        MiniClient(lambda payload:response).generate(\"hi\")\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Malformed response accepted\")",
+          "explanation": "Transport success does not imply valid domain data."
+        }
+      ],
+      "hints": [
+        "Injection makes behavior testable without a real service, but validation is still required.",
+        "Validate prompt, call self.transport with a new payload, then validate response[\"text\"] before returning it."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Embedding real credentials in client source.",
+      "Returning an unchecked response body to callers."
+    ],
+    "xp": 20,
+    "tags": [
+      "api-clients",
+      "dependency-injection",
+      "validation"
+    ]
+  },
+  {
+    "id": "advanced-logging",
+    "module": "advanced",
+    "section": "Reusable services",
+    "title": "Log useful events without leaking prompts",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-client"
+    ],
+    "objectives": [
+      "Explain log useful events without leaking prompts in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "Logging records diagnostic events with levels such as DEBUG, INFO, WARNING, and ERROR. A logger produces records; handlers decide where they go; formatters decide how they look. Library code should usually obtain a named logger instead of configuring the whole application’s root logger. The application owns destinations and verbosity so different environments can choose appropriate policies.\n\nAI logs can accidentally expose prompts, retrieved documents, API keys, or personal data. Prefer operational metadata such as request IDs, latency, status, and token counts when raw content is unnecessary. A redaction function should create a new mapping rather than mutate the original request. Redaction by key is only a limited teaching policy: secrets can appear in nested structures or free text, so production logging requires deliberate schemas and data minimization rather than confidence in a short denylist.",
+    "why": "AI debugging needs enough information to diagnose latency and failures without copying sensitive prompts or credentials into long-lived logs. Structured operational metadata helps correlate requests while keeping observability separate from the full content processed by the model.",
+    "example": {
+      "code": "import logging\nlogger=logging.getLogger(\"pyquest.client\")\nevent={\"request_id\":\"r-1\",\"status\":\"ok\",\"tokens\":24}\nlogger.info(\"request_complete request_id=%s status=%s tokens=%s\",\n            event[\"request_id\"],event[\"status\"],event[\"tokens\"])\n# The application decides handlers and log levels.",
+      "explanation": "The logger is named for the component, while configuration is left to the application. Placeholder formatting lets the logging system handle message construction. The event includes correlation and usage metadata but omits raw prompt text. The exercise practices a small top-level redaction rule and explicitly does not claim that such a rule catches every possible secret."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which field is usually safer for an operational completion log?",
+      "options": [
+        "Raw authorization header",
+        "Full private document",
+        "Request ID"
+      ],
+      "answer": "Request ID",
+      "explanation": "Prefer metadata that helps trace a request without reproducing its private content."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement redact(event) for a dictionary with string keys. Return a fresh dictionary replacing values of authorization, api_key, or prompt keys (case-insensitive) with \"[REDACTED]\". Keep other fields unchanged. This handles top-level fields only.",
+      "starter": "def redact(event):\n    pass",
+      "solution": "def redact(event):\n    sensitive={\"authorization\",\"api_key\",\"prompt\"}\n    return {key:(\"[REDACTED]\" if key.lower() in sensitive else value) for key,value in event.items()}",
+      "solutionExplanation": "Prefer metadata that helps trace a request without reproducing its private content. Build a new dictionary and compare key.lower() against the three sensitive field names. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Redaction",
+          "code": "assert redact({\"prompt\":\"secret\",\"status\":\"ok\"})=={\"prompt\":\"[REDACTED]\",\"status\":\"ok\"}",
+          "explanation": "Content fields are removed while useful metadata remains."
+        },
+        {
+          "name": "Case insensitive",
+          "code": "assert redact({\"Authorization\":\"Bearer x\",\"API_KEY\":\"x\"})=={\"Authorization\":\"[REDACTED]\",\"API_KEY\":\"[REDACTED]\"}",
+          "explanation": "Header-style capitalization must not bypass the rule."
+        },
+        {
+          "name": "Nonmutation",
+          "code": "e={\"prompt\":\"original\"}; r=redact(e); assert e[\"prompt\"]==\"original\" and redact({})=={}",
+          "explanation": "Logging preparation should not modify the request itself."
+        }
+      ],
+      "hints": [
+        "Prefer metadata that helps trace a request without reproducing its private content.",
+        "Build a new dictionary and compare key.lower() against the three sensitive field names."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Claiming a shallow denylist guarantees all secrets are removed.",
+      "Configuring global logging repeatedly inside a reusable library function."
+    ],
+    "xp": 20,
+    "tags": [
+      "logging",
+      "privacy"
+    ]
+  },
+  {
+    "id": "advanced-checkpoint-client",
+    "module": "advanced",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: a validated, observable request",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "advanced-logging"
+    ],
+    "objectives": [
+      "Explain checkpoint: a validated, observable request in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A reusable client boundary combines input validation, a transport call, output validation, and an operational event. This checkpoint asks you to perform those stages in order. A successful event should be emitted only after a valid response has been obtained. Invalid prompts should not call the transport, and malformed responses should not be recorded as successes.\n\nThe event includes an application-supplied request ID and the length of returned text, but it deliberately excludes prompt and response content. A list acts as the event sink so behavior is deterministic in tests. This is a simulation of observability, not a real log collector. Separating the event contract from the transport makes it easy to replace the list with a structured logger later without changing how the client validates its domain values.",
+    "why": "An AI service can appear healthy if it logs every HTTP response as a success before validating the payload. Emitting events after domain validation gives monitoring a more meaningful signal while keeping private content out of routine operational records.",
+    "example": {
+      "code": "response={\"text\":\"answer\"}\nrequest_id=\"r-42\"\nif isinstance(response.get(\"text\"),str):\n    event={\"request_id\":request_id,\"status\":\"ok\",\"characters\":len(response[\"text\"])}\n    print(event)\n# Operational metadata, not the raw answer text.",
+      "explanation": "The example checks the field used by the application before creating a success event. The event carries a stable correlation key and a simple size measurement, allowing operators to connect it with other request metadata. The checkpoint adds prompt normalization and an injected transport, then ensures no event is appended when input or response validation fails."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order a successful client request.",
+      "options": [
+        "Emit success event",
+        "Validate response",
+        "Validate input",
+        "Call transport"
+      ],
+      "answer": [
+        "Validate input",
+        "Call transport",
+        "Validate response",
+        "Emit success event"
+      ],
+      "explanation": "Success logging belongs after response validation, not merely after the transport returns."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement observed_generate(prompt, request_id, transport, events). Validate and strip a nonblank prompt, call transport with {prompt: value}, validate string text in its dictionary result, append {request_id, status:\"ok\", characters:len(text)} only on success, and return text. Raise ValueError for invalid input/output.",
+      "starter": "def observed_generate(prompt, request_id, transport, events):\n    pass",
+      "solution": "def observed_generate(prompt, request_id, transport, events):\n    if not isinstance(prompt,str) or not prompt.strip():\n        raise ValueError(\"Invalid prompt\")\n    response=transport({\"prompt\":prompt.strip()})\n    if not isinstance(response,dict) or not isinstance(response.get(\"text\"),str):\n        raise ValueError(\"Invalid response\")\n    text=response[\"text\"]\n    events.append({\"request_id\":request_id,\"status\":\"ok\",\"characters\":len(text)})\n    return text",
+      "solutionExplanation": "Success logging belongs after response validation, not merely after the transport returns. Keep the event schema narrow: request_id, status, and characters; never append the full payload. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Success",
+          "code": "events=[]; calls=[]\ndef fake(payload): calls.append(payload); return {\"text\":\"answer\"}\nassert observed_generate(\" hi \",\"r1\",fake,events)==\"answer\"\nassert calls==[{\"prompt\":\"hi\"}] and events==[{\"request_id\":\"r1\",\"status\":\"ok\",\"characters\":6}]",
+          "explanation": "Validation, normalized transport, and minimal event data must agree."
+        },
+        {
+          "name": "Invalid response",
+          "code": "events=[]\ntry:\n    observed_generate(\"hi\",\"r\",lambda p:{\"text\":1},events)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Malformed output accepted\")\nassert events==[]",
+          "explanation": "Do not log a domain failure as success."
+        },
+        {
+          "name": "Invalid input",
+          "code": "events=[]\ndef never(p): raise AssertionError(\"Transport called\")\ntry:\n    observed_generate(\" \",\"r\",never,events)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Blank input accepted\")\nassert events==[]",
+          "explanation": "Input rejection must happen before external side effects."
+        }
+      ],
+      "hints": [
+        "Success logging belongs after response validation, not merely after the transport returns.",
+        "Keep the event schema narrow: request_id, status, and characters; never append the full payload."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Logging success before checking the response schema.",
+      "Adding raw prompt or generated text to an operational event."
+    ],
+    "xp": 50,
+    "tags": [
+      "api-clients",
+      "logging",
+      "validation",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "advanced-retries",
+    "module": "advanced",
+    "section": "Reliable operations",
+    "title": "Bounded retries and exponential backoff",
+    "minutes": 8,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-checkpoint-client"
+    ],
+    "objectives": [
+      "Explain bounded retries and exponential backoff in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A retry repeats an operation after a failure that may be temporary. Retrying every exception is unsafe: a validation error or invalid credential usually will not improve by repetition. A bounded policy specifies which failures are retryable and how many total attempts are allowed. Be explicit whether a number means total attempts or retries after the initial call; confusing them creates off-by-one behavior.\n\nExponential backoff increases the delay between attempts, often with jitter in production to avoid synchronized traffic spikes. A teaching schedule can use base * 2**attempt without actually sleeping. Do not delay after the final failed attempt because no later attempt remains. Repeated operations should be idempotent or use service-supported idempotency keys when side effects matter. Injecting the waiting function keeps tests fast and makes the requested delays observable.",
+    "why": "Hosted model APIs sometimes fail transiently or enforce rate limits. A narrow, bounded retry policy can improve reliability while avoiding infinite loops, repeated charges for non-idempotent requests, and test suites that wait through real backoff delays.",
+    "example": {
+      "code": "delays=[0.5*(2**attempt) for attempt in range(3)]\nprint(delays)  # [0.5, 1.0, 2.0]\n# Three waits separate four total attempts.\n# A production policy may respect Retry-After and add jitter.",
+      "explanation": "The sequence shows how delays grow between attempts. Three waits imply four opportunities to call the operation, because the first attempt happens before any wait. The final failure should propagate rather than trigger another delay. The exercise injects a wait callback and retries only TimeoutError, making classification, attempt counting, and delay behavior directly testable."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "With three total attempts, what is the maximum number of waits?",
+      "options": [
+        "2",
+        "3",
+        "4"
+      ],
+      "answer": "2",
+      "explanation": "Total attempts include the first call, so at most attempts - 1 waits are possible."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement retry_call(operation, attempts, wait, base=0.5). attempts is total calls allowed and must be positive. Retry only TimeoutError, calling wait(base*2**attempt_index) between failed attempts. Return success immediately; propagate other errors and the final TimeoutError. Do not actually sleep.",
+      "starter": "def retry_call(operation, attempts, wait, base=0.5):\n    pass",
+      "solution": "def retry_call(operation, attempts, wait, base=0.5):\n    if attempts <= 0:\n        raise ValueError(\"attempts must be positive\")\n    for attempt in range(attempts):\n        try:\n            return operation()\n        except TimeoutError:\n            if attempt == attempts-1:\n                raise\n            wait(base*(2**attempt))",
+      "solutionExplanation": "Total attempts include the first call, so at most attempts - 1 waits are possible. Catch only TimeoutError; re-raise on the final attempt and invoke the injected wait callback otherwise. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Recovery",
+          "code": "state={\"n\":0}; waits=[]\ndef op():\n    state[\"n\"]+=1\n    if state[\"n\"]<3: raise TimeoutError(\"temporary\")\n    return \"ok\"\nassert retry_call(op,3,waits.append)==\"ok\" and waits==[0.5,1.0]",
+          "explanation": "The third attempt succeeds after two increasing waits."
+        },
+        {
+          "name": "No extra wait",
+          "code": "waits=[]\ndef op(): raise TimeoutError(\"still failing\")\ntry:\n    retry_call(op,2,waits.append)\nexcept TimeoutError:\n    pass\nelse:\n    raise AssertionError(\"Final failure swallowed\")\nassert waits==[0.5]",
+          "explanation": "No wait follows the last possible attempt."
+        },
+        {
+          "name": "Fatal and invalid",
+          "code": "def fatal(): raise ValueError(\"bad input\")\nfor attempts in [2,0]:\n    try:\n        retry_call(fatal,attempts,lambda delay: (_ for _ in ()).throw(AssertionError(\"Unexpected wait\")))\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Expected error\")",
+          "explanation": "Fatal errors are not retryable and invalid attempt counts are rejected."
+        }
+      ],
+      "hints": [
+        "Total attempts include the first call, so at most attempts - 1 waits are possible.",
+        "Catch only TimeoutError; re-raise on the final attempt and invoke the injected wait callback otherwise."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Retrying every exception, including invalid credentials or malformed input.",
+      "Sleeping after the final failed attempt."
+    ],
+    "xp": 20,
+    "tags": [
+      "retries",
+      "error-handling"
+    ]
+  },
+  {
+    "id": "advanced-dependency-versions",
+    "module": "advanced",
+    "section": "Reliable operations",
+    "title": "Dependency ranges and reproducible builds",
+    "minutes": 8,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-retries"
+    ],
+    "objectives": [
+      "Explain dependency ranges and reproducible builds in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A dependency declaration expresses compatibility, while a lock file records a particular resolved environment. Exact pins make a given installation more reproducible, but they still depend on supported Python versions, platforms, and available package artifacts. Broad ranges allow updates that may change behavior. Test upgrades deliberately rather than assuming a compatible version number proves an AI pipeline’s outputs remain unchanged.\n\nVersion strings should not be compared lexicographically: \"2.10\" would sort before \"2.9\" as text even though its numeric minor version is larger. Real Python packaging uses the richer PEP 440 specification and dedicated tools. This lesson implements only a deliberately restricted three-integer version format to practice numeric tuple comparisons. It does not handle prereleases, epochs, local versions, or dependency resolution. Naming these limits is part of designing a trustworthy utility.",
+    "why": "Numerical and model-serving dependencies can affect outputs, performance, and deployment compatibility. Understanding declarations, locks, and version comparison helps you review upgrades carefully and prevents a simplistic string comparison from selecting an older or unsupported library release.",
+    "example": {
+      "code": "print(\"2.10.0\" < \"2.9.0\")  # True: lexical order is wrong here.\na=tuple(int(part) for part in \"2.10.0\".split(\".\"))\nb=tuple(int(part) for part in \"2.9.0\".split(\".\"))\nprint(a>b)  # True: compare numeric components.",
+      "explanation": "The first comparison uses character order, so it reaches the character 1 before 9 and makes the wrong version decision. Converting each dotted component to an integer gives tuple comparison the intended numeric meaning. The exercise adds validation and a half-open supported range while explicitly limiting the accepted syntax to three nonnegative integer components."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which comparison correctly orders these restricted versions?",
+      "options": [
+        "Compare raw strings",
+        "Compare tuples of integer components",
+        "Compare only string lengths"
+      ],
+      "answer": "Compare tuples of integer components",
+      "explanation": "Compare integer tuples, not version strings."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement supported(version, minimum, maximum) for three dot-separated nonnegative ASCII integer components only. Return minimum <= version < maximum using numeric comparison. Invalid syntax or minimum >= maximum raises ValueError. This is not a PEP 440 implementation.",
+      "starter": "def supported(version, minimum, maximum):\n    pass",
+      "solution": "def supported(version, minimum, maximum):\n    def parse(value):\n        parts=value.split(\".\")\n        if len(parts)!=3 or not all(p.isascii() and p.isdigit() for p in parts):\n            raise ValueError(\"Expected major.minor.patch\")\n        return tuple(int(p) for p in parts)\n    value,low,high=map(parse,(version,minimum,maximum))\n    if low>=high:\n        raise ValueError(\"Invalid range\")\n    return low<=value<high",
+      "solutionExplanation": "Compare integer tuples, not version strings. Validate exactly three ASCII digit components, parse all three versions, and use a half-open numeric interval. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Numeric ordering",
+          "code": "assert supported(\"2.10.0\",\"2.9.0\",\"3.0.0\")",
+          "explanation": "Numeric components avoid the lexical ordering bug."
+        },
+        {
+          "name": "Boundaries",
+          "code": "assert supported(\"2.0.0\",\"2.0.0\",\"3.0.0\") and not supported(\"3.0.0\",\"2.0.0\",\"3.0.0\")",
+          "explanation": "The lower bound is inclusive and upper bound exclusive."
+        },
+        {
+          "name": "Invalid syntax",
+          "code": "for v in [\"2.0\", \"2.0.0rc1\", \"-1.0.0\"]:\n    try:\n        supported(v,\"1.0.0\",\"3.0.0\")\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Unsupported syntax accepted\")",
+          "explanation": "Reject formats outside the stated small contract."
+        }
+      ],
+      "hints": [
+        "Compare integer tuples, not version strings.",
+        "Validate exactly three ASCII digit components, parse all three versions, and use a half-open numeric interval."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Claiming a small parser supports all Python package versions.",
+      "Assuming a lock file removes the need to test dependency upgrades."
+    ],
+    "xp": 20,
+    "tags": [
+      "dependencies",
+      "versions"
+    ]
+  },
+  {
+    "id": "advanced-profiling",
+    "module": "advanced",
+    "section": "Reliable operations",
+    "title": "Measure bottlenecks before optimizing",
+    "minutes": 8,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-dependency-versions"
+    ],
+    "objectives": [
+      "Explain measure bottlenecks before optimizing in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "Optimization starts with a measurement and a concrete workload. time.perf_counter measures elapsed time, while cProfile attributes calls and execution time across functions. A microbenchmark can reveal local costs, but it may not represent an application dominated by network waiting or large input variation. Repeat measurements and distinguish warm-up work, such as model loading, from steady-state processing.\n\nAlgorithmic changes often matter more than rewriting syntax. Checking each item against a list of already-seen items can become quadratic as the collection grows, while a set gives average constant-time membership checks. Caching can avoid repeated expensive work, but it consumes memory and needs an invalidation policy. In this exercise, cache results only within one function call for repeated text strings. This bounded lifetime avoids pretending that a local optimization solves persistent cache freshness or multi-user isolation.",
+    "why": "AI pipelines spend time in tokenization, retrieval, serialization, networking, and inference. Measuring where time actually goes prevents effort on irrelevant micro-optimizations, while request-local reuse can eliminate repeated deterministic preprocessing without introducing a long-lived stale cache.",
+    "example": {
+      "code": "from time import perf_counter\nstart=perf_counter()\ncounts=[len(text.split()) for text in [\"a b\", \"c\"]]\nelapsed=perf_counter()-start\nprint(counts)\nprint(\"Elapsed seconds:\",elapsed)\n# Repeat with representative data before drawing performance conclusions.",
+      "explanation": "perf_counter measures a duration around a specific operation; it does not explain where inside that operation time was spent. The tiny sample is a demonstration of instrumentation rather than evidence of production speed. The exercise uses call counts instead of timing thresholds, giving a deterministic test that repeated identical inputs reuse an expensive operation within one batch."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which is the strongest deterministic test for request-local caching?",
+      "options": [
+        "A strict millisecond threshold",
+        "Count dependency calls for repeated inputs",
+        "Assume shorter code is faster"
+      ],
+      "answer": "Count dependency calls for repeated inputs",
+      "explanation": "Count calls to verify avoided work without relying on noisy timing thresholds."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement map_unique(texts, operation). Apply operation once per distinct string in this call, return results aligned to every original input (including repeats), and discard the cache between calls. Cached results may be None or zero.",
+      "starter": "def map_unique(texts, operation):\n    pass",
+      "solution": "def map_unique(texts, operation):\n    cache={}\n    result=[]\n    for text in texts:\n        if text not in cache:\n            cache[text]=operation(text)\n        result.append(cache[text])\n    return result",
+      "solutionExplanation": "Count calls to verify avoided work without relying on noisy timing thresholds. Check text in cache rather than cache.get(text), because None and zero are valid cached results. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Reuse",
+          "code": "calls=[]\ndef op(x): calls.append(x); return x.upper()\nassert map_unique([\"a\",\"b\",\"a\"],op)==[\"A\",\"B\",\"A\"] and calls==[\"a\",\"b\"]",
+          "explanation": "Repeat outputs without repeating computation."
+        },
+        {
+          "name": "Falsey values",
+          "code": "calls=[]\ndef op(x): calls.append(x); return None\nassert map_unique([\"x\",\"x\"],op)==[None,None] and calls==[\"x\"]",
+          "explanation": "Membership, not truthiness, determines a cache hit."
+        },
+        {
+          "name": "Local lifetime",
+          "code": "calls=[]\ndef op(x): calls.append(x); return 0\nmap_unique([\"x\"],op); map_unique([\"x\"],op); assert calls==[\"x\",\"x\"] and map_unique([],op)==[]",
+          "explanation": "A new batch gets a fresh cache."
+        }
+      ],
+      "hints": [
+        "Count calls to verify avoided work without relying on noisy timing thresholds.",
+        "Check text in cache rather than cache.get(text), because None and zero are valid cached results."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using truthiness to detect a cached value.",
+      "Keeping a global cache without a lifecycle or isolation policy."
+    ],
+    "xp": 20,
+    "tags": [
+      "profiling",
+      "performance",
+      "caching"
+    ]
+  },
+  {
+    "id": "advanced-mocking",
+    "module": "advanced",
+    "section": "Reliable operations",
+    "title": "Test clients with fakes and mocks",
+    "minutes": 8,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-profiling"
+    ],
+    "objectives": [
+      "Explain test clients with fakes and mocks in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A fake is a small working replacement for a dependency; a mock records interactions and can return configured values or raise configured exceptions. Both help test code that would otherwise depend on a network, clock, filesystem, or paid model API. Prefer asserting public outcomes, and assert call details only when those interactions are part of the contract. Overly detailed interaction tests can make harmless refactoring painful.\n\nDependency injection avoids patching global names in many cases. When patching is necessary, patch the name where the code under test looks it up, not an unrelated original definition. unittest.mock is in the standard library and can simulate a sequence of responses with side_effect. This exercise uses a client object whose generate method is injected, letting tests check normalization, call count, and returned values without any real model inference.",
+    "why": "AI application tests must run without private credentials and should reproduce failures reliably. Fakes and mocks let you verify request construction and error handling while keeping genuine model-quality evaluation as a separate process with its own datasets and uncertainty.",
+    "example": {
+      "code": "from unittest.mock import Mock\nclient=Mock()\nclient.generate.side_effect=[\"first\", \"second\"]\nprint(client.generate(\"a\"),client.generate(\"b\"))\nassert client.generate.call_count==2\n# These are configured fake responses, not generated model outputs.",
+      "explanation": "The mock returns each configured response in sequence and records how often generate was called. This is useful for deterministic client behavior tests but says nothing about actual model quality. The exercise tests a wrapper that strips prompts and avoids calling the dependency for blank input, so the expected interaction is a meaningful part of the contract."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does a mocked successful model response prove?",
+      "options": [
+        "The real model is accurate",
+        "The wrapper handles that configured response",
+        "The network is available"
+      ],
+      "answer": "The wrapper handles that configured response",
+      "explanation": "A mock verifies behavior against configured responses, not the real model’s competence."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement complete_nonblank(prompt, client). Strip a string prompt. Return None without calling client.generate when blank; otherwise call generate once with the stripped prompt and return its result unchanged. Propagate client exceptions.",
+      "starter": "def complete_nonblank(prompt, client):\n    pass",
+      "solution": "def complete_nonblank(prompt, client):\n    cleaned=prompt.strip()\n    if not cleaned:\n        return None\n    return client.generate(cleaned)",
+      "solutionExplanation": "A mock verifies behavior against configured responses, not the real model’s competence. Strip once, return None for an empty result, otherwise return client.generate(cleaned) directly. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Normalize call",
+          "code": "from unittest.mock import Mock\nc=Mock(); c.generate.return_value=\"ok\"; assert complete_nonblank(\" hi \",c)==\"ok\"; c.generate.assert_called_once_with(\"hi\")",
+          "explanation": "A mock verifies the documented request boundary."
+        },
+        {
+          "name": "Skip blank",
+          "code": "from unittest.mock import Mock\nc=Mock(); assert complete_nonblank(\" \\n\",c) is None; c.generate.assert_not_called()",
+          "explanation": "Empty work should not contact a model."
+        },
+        {
+          "name": "Propagate error",
+          "code": "from unittest.mock import Mock\nc=Mock(); c.generate.side_effect=TimeoutError(\"offline\")\ntry:\n    complete_nonblank(\"hi\",c)\nexcept TimeoutError:\n    pass\nelse:\n    raise AssertionError(\"Failure swallowed\")",
+          "explanation": "The wrapper must not convert failure into a successful-looking result."
+        }
+      ],
+      "hints": [
+        "A mock verifies behavior against configured responses, not the real model’s competence.",
+        "Strip once, return None for an empty result, otherwise return client.generate(cleaned) directly."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Treating mocked success as evidence that live inference works.",
+      "Catching every exception and returning an empty string that looks successful."
+    ],
+    "xp": 20,
+    "tags": [
+      "testing",
+      "mocking"
+    ]
+  },
+  {
+    "id": "advanced-design",
+    "module": "advanced",
+    "section": "Reliable operations",
+    "title": "Compose policies instead of a giant client",
+    "minutes": 8,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "advanced-mocking"
+    ],
+    "objectives": [
+      "Explain compose policies instead of a giant client in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "A reusable AI component often needs validation, transport, retry, logging, and caching. Putting every policy into one large method makes changes hard to reason about and tests hard to isolate. Composition lets small functions or objects provide focused behavior, with the application choosing how they fit together. The strategy pattern is a name for selecting an interchangeable operation through a shared interface rather than branching on many concrete types.\n\nChoose the simplest structure that expresses the policies. A function receiving a scorer and an acceptance predicate is often enough; it does not need a complex inheritance hierarchy. State whether each dependency is called once and whether failures propagate. Preserve ordering so outputs can be traced to inputs. This exercise composes scoring and filtering while returning useful evidence, keeping the calculation policy separate from the decision policy.",
+    "why": "AI systems change providers, ranking formulas, and acceptance thresholds over time. Small injected policies let those changes happen independently and make tests explain which behavior belongs to the scorer, the decision rule, and the orchestration code.",
+    "example": {
+      "code": "def choose(values, score, accept):\n    result=[]\n    for value in values:\n        measured=score(value)\n        if accept(measured):\n            result.append(value)\n    return result\n\nprint(choose([\"a\",\"long\"],len,lambda n:n>=3))",
+      "explanation": "The orchestration knows only that score returns a value and accept decides whether that value qualifies. It does not know whether scoring uses text length, a model, or a retrieval metric. The example returns only selected inputs; the exercise returns both text and score so callers can inspect the evidence without recomputing an expensive dependency."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which design best supports replacing a scoring model in tests?",
+      "options": [
+        "Construct it inside every helper",
+        "Pass a scorer into orchestration",
+        "Use a global mutable client"
+      ],
+      "answer": "Pass a scorer into orchestration",
+      "explanation": "Pass replaceable policies into orchestration instead of constructing concrete implementations inside it."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement select_scored(texts, score, accept). Call score(text) once for each input, call accept(score_value), and return {text,score} records for accepted values in input order. Do not recompute accepted scores.",
+      "starter": "def select_scored(texts, score, accept):\n    pass",
+      "solution": "def select_scored(texts, score, accept):\n    result=[]\n    for text in texts:\n        value=score(text)\n        if accept(value):\n            result.append({\"text\":text,\"score\":value})\n    return result",
+      "solutionExplanation": "Pass replaceable policies into orchestration instead of constructing concrete implementations inside it. Store score(text) in a local variable, use it for acceptance, then include the same value in the output record. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Composition",
+          "code": "assert select_scored([\"a\",\"long\"],len,lambda n:n>2)==[{\"text\":\"long\",\"score\":4}]",
+          "explanation": "The acceptance rule is independent from the scorer."
+        },
+        {
+          "name": "Single call",
+          "code": "calls=[]\ndef score(t): calls.append(t); return len(t)\nselect_scored([\"a\",\"bb\"],score,lambda n:True); assert calls==[\"a\",\"bb\"]",
+          "explanation": "Keep the score to avoid duplicate model work."
+        },
+        {
+          "name": "Empty and reject",
+          "code": "assert select_scored([],len,lambda n:True)==[] and select_scored([\"a\"],len,lambda n:False)==[]",
+          "explanation": "Empty input and rejected values produce empty results."
+        }
+      ],
+      "hints": [
+        "Pass replaceable policies into orchestration instead of constructing concrete implementations inside it.",
+        "Store score(text) in a local variable, use it for acceptance, then include the same value in the output record."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Recomputing a costly score to build the output.",
+      "Introducing inheritance when a small callable interface is enough."
+    ],
+    "xp": 20,
+    "tags": [
+      "design-patterns",
+      "composition"
+    ]
+  },
+  {
+    "id": "advanced-checkpoint-resilience",
+    "module": "advanced",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: retry without duplicate successful work",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "advanced-design"
+    ],
+    "objectives": [
+      "Explain checkpoint: retry without duplicate successful work in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "This checkpoint combines request-local caching with narrow retries. For each input string, call an injected operation until it succeeds or reaches a bounded number of total attempts. Retry only TimeoutError. Once a string succeeds, store its result so repeated inputs in the same batch do not call the dependency again. A failed attempt is not a cached result.\n\nThe cache must distinguish absence from valid falsey outputs such as None or zero. The attempt budget is per distinct string, not shared across the whole batch. If a final failure occurs, propagate it instead of returning a partial successful-looking result. No waiting is needed in this assessment because the focus is orchestration correctness. A production service would combine this logic with explicit backoff, deadlines, idempotency, and an appropriate cache lifetime.",
+    "why": "Batched AI workflows often contain repeated prompts and transient failures. Combining retries and reuse carefully can reduce unnecessary calls without hiding failures, but caching unsuccessful attempts or sharing a retry budget incorrectly can make the behavior depend on input order.",
+    "example": {
+      "code": "cache={\"known\":None}\nprint(\"known\" in cache)  # True: None can be a successful value.\nprint(\"missing\" in cache)  # False: no successful result yet.\n# Retry counters belong to the item currently being processed.",
+      "explanation": "The example highlights that membership and truthiness answer different questions. A successful operation may legitimately return None, and the cache still represents completed work. The checkpoint adds a per-item retry loop around the first uncached call. Repeated successful values are reused, while a final timeout leaves the function through an exception rather than a partial return."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When should a result enter the request-local cache?",
+      "options": [
+        "Before the first call",
+        "After a successful call",
+        "After any exception"
+      ],
+      "answer": "After a successful call",
+      "explanation": "Cache only successful results and use membership to recognize them."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement resilient_map(texts, operation, attempts). Validate positive total attempts. For each distinct string, retry only TimeoutError up to that many calls; cache only successful results for this invocation and preserve output alignment. Propagate exhausted/fatal failures. No sleeping.",
+      "starter": "def resilient_map(texts, operation, attempts):\n    pass",
+      "solution": "def resilient_map(texts, operation, attempts):\n    if attempts <= 0:\n        raise ValueError(\"attempts must be positive\")\n    cache={}\n    result=[]\n    for text in texts:\n        if text not in cache:\n            for attempt in range(attempts):\n                try:\n                    cache[text]=operation(text)\n                    break\n                except TimeoutError:\n                    if attempt==attempts-1:\n                        raise\n        result.append(cache[text])\n    return result",
+      "solutionExplanation": "Cache only successful results and use membership to recognize them. For an uncached text, run a bounded retry loop; assign cache[text] only when operation returns, then break. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Retry and reuse",
+          "code": "calls=[]\ndef op(t):\n    calls.append(t)\n    if calls.count(t)==1: raise TimeoutError(\"again\")\n    return t.upper()\nassert resilient_map([\"a\",\"a\",\"b\"],op,2)==[\"A\",\"A\",\"B\"] and calls==[\"a\",\"a\",\"b\",\"b\"]",
+          "explanation": "Repeated successful inputs reuse one result after recovery."
+        },
+        {
+          "name": "Falsey result",
+          "code": "calls=[]\ndef op(t): calls.append(t); return None\nassert resilient_map([\"a\",\"a\"],op,1)==[None,None] and calls==[\"a\"]",
+          "explanation": "A falsey success is still cacheable."
+        },
+        {
+          "name": "Exhaustion",
+          "code": "calls=[]\ndef op(t): calls.append(t); raise TimeoutError(\"offline\")\ntry:\n    resilient_map([\"a\"],op,2)\nexcept TimeoutError:\n    pass\nelse:\n    raise AssertionError(\"Failure hidden\")\nassert calls==[\"a\",\"a\"]",
+          "explanation": "Honor the total-attempt bound and propagate final failure."
+        }
+      ],
+      "hints": [
+        "Cache only successful results and use membership to recognize them.",
+        "For an uncached text, run a bounded retry loop; assign cache[text] only when operation returns, then break."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Caching an exception or placeholder as if it were success.",
+      "Sharing a single attempt counter across unrelated strings."
+    ],
+    "xp": 50,
+    "tags": [
+      "retries",
+      "caching",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "advanced-project-transport",
+    "module": "advanced",
+    "section": "Reusable AI client project",
+    "title": "AI client · 1. A deterministic transport",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "advanced-checkpoint-resilience"
+    ],
+    "objectives": [
+      "Explain ai client · 1. a deterministic transport in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "The capstone builds a reusable client around a simulated AI service. Start with a deterministic transport that accepts a payload and returns a structured response. Its behavior must be clearly labeled as simulation: extracting words or uppercasing text is not model inference. The transport validates a nonblank prompt and an integer output limit, then returns a bounded prefix of whitespace-separated words with a usage count.\n\nKeeping simulation deterministic makes later retry and logging tests reproducible. The public payload shape mirrors a simple hosted service without requiring an API key or network connection. Reject invalid limits rather than quietly clipping them, and distinguish input words from returned output words. This first milestone establishes the service contract that later client stages will consume. Each stage can then be tested independently before the final composed client is exercised end to end.",
+    "why": "A simulated service allows you to build and test an API client without paid calls, credentials, or nondeterministic answers. Clearly labeling that behavior prevents a working transport demonstration from being mistaken for a real language model’s generation capabilities.",
+    "example": {
+      "code": "payload={\"prompt\":\"one two three\", \"max_words\":2}\nwords=payload[\"prompt\"].split()\noutput=\" \".join(words[:payload[\"max_words\"]])\nprint({\"text\":output,\"simulated\":True})\n# This is word selection, not language-model generation.",
+      "explanation": "The example shows the deterministic transformation at the heart of the fake service. It returns a prefix of the prompt rather than inventing new text, and simulated is explicitly true. The project function adds validation and a usage count so the next milestone can rely on a stable transport contract and distinguish malformed requests from transient failures."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What must identify this service’s behavior honestly?",
+      "options": [
+        "A simulated flag",
+        "A claim of real inference",
+        "An invented model accuracy score"
+      ],
+      "answer": "A simulated flag",
+      "explanation": "Make the simulation explicit and deterministic so tests do not imply real model execution."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement simulated_transport(payload). Require nonblank string prompt and positive exact-int max_words (reject bool). Return {text: first max_words whitespace-separated words joined by spaces, usage: returned word count, simulated: True}. Invalid fields raise ValueError.",
+      "starter": "def simulated_transport(payload):\n    pass",
+      "solution": "def simulated_transport(payload):\n    prompt=payload.get(\"prompt\")\n    limit=payload.get(\"max_words\")\n    if not isinstance(prompt,str) or not prompt.strip():\n        raise ValueError(\"Invalid prompt\")\n    if type(limit) is not int or limit<=0:\n        raise ValueError(\"Invalid max_words\")\n    words=prompt.split()[:limit]\n    return {\"text\":\" \".join(words),\"usage\":len(words),\"simulated\":True}",
+      "solutionExplanation": "Make the simulation explicit and deterministic so tests do not imply real model execution. Validate prompt and exact integer limit, slice prompt.split(), and derive both text and usage from that slice. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Bounded output",
+          "code": "assert simulated_transport({\"prompt\":\" one two three \",\"max_words\":2})=={\"text\":\"one two\",\"usage\":2,\"simulated\":True}",
+          "explanation": "The fake produces a deterministic bounded prefix."
+        },
+        {
+          "name": "Short input",
+          "code": "assert simulated_transport({\"prompt\":\"AI\",\"max_words\":5})[\"usage\"]==1",
+          "explanation": "Usage counts returned words, not the requested maximum."
+        },
+        {
+          "name": "Validation",
+          "code": "for p in [{\"prompt\":\" \",\"max_words\":2},{\"prompt\":\"hi\",\"max_words\":0},{\"prompt\":\"hi\",\"max_words\":True}]:\n    try:\n        simulated_transport(p)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid payload accepted\")",
+          "explanation": "Reject malformed requests before processing."
+        }
+      ],
+      "hints": [
+        "Make the simulation explicit and deterministic so tests do not imply real model execution.",
+        "Validate prompt and exact integer limit, slice prompt.split(), and derive both text and usage from that slice."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Calling deterministic text slicing an LLM.",
+      "Counting requested words instead of actually returned words."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "simulation",
+      "api-clients"
+    ],
+    "project": {
+      "id": "advanced-capstone",
+      "title": "Reusable simulated AI client",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "advanced-project-retry",
+    "module": "advanced",
+    "section": "Reusable AI client project",
+    "title": "AI client · 2. A bounded transport policy",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "advanced-project-transport"
+    ],
+    "objectives": [
+      "Explain ai client · 2. a bounded transport policy in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "The second milestone wraps the transport in a reusable retry function. The payload is passed unchanged to each attempt, and the caller supplies both the transport and the waiting callback. This separates policy from mechanism: the wrapper decides when another attempt is allowed, while the transport decides how a request is performed and the waiting callback decides how time is handled.\n\nRetry only TimeoutError and count the first request as an attempt. Delay after a retryable failure only if another attempt remains. Exponential delays start at 0.25 seconds in this project. Tests record those requested delays without actually waiting. Validation and response-shape errors should propagate immediately because repeating the same malformed request is unlikely to help. A real service also needs deadlines and idempotency considerations; this milestone establishes a bounded, inspectable core policy.",
+    "why": "A reusable retry wrapper keeps resilience behavior consistent across client methods and makes its cost visible. Injecting time and transport lets tests verify exact attempt counts and backoff without contacting a model or slowing the learning session.",
+    "example": {
+      "code": "recorded=[]\ndef record_wait(seconds):\n    recorded.append(seconds)\nfor retry_index in range(2):\n    record_wait(0.25*(2**retry_index))\nprint(recorded)  # [0.25, 0.5]\n# The test records waits; it does not sleep.",
+      "explanation": "The waiting callback captures requested durations as data. This makes backoff behavior observable and avoids fragile timing assertions. The project wrapper must call it only between retryable failed attempts, not before the first call or after final exhaustion. Passing the same payload through each attempt keeps the service request stable and makes transport fakes straightforward to inspect."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which failure should this wrapper retry?",
+      "options": [
+        "ValueError",
+        "TimeoutError",
+        "Every Exception"
+      ],
+      "answer": "TimeoutError",
+      "explanation": "Retry only the documented transient error; other failures should remain visible."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement send_with_retry(payload, transport, wait, attempts=3). Call transport(payload) with at most attempts total calls; positive attempts required. Retry TimeoutError only, requesting waits of 0.25 * 2**retry_index between failures. Return the transport result unchanged.",
+      "starter": "def send_with_retry(payload, transport, wait, attempts=3):\n    pass",
+      "solution": "def send_with_retry(payload, transport, wait, attempts=3):\n    if attempts<=0:\n        raise ValueError(\"attempts must be positive\")\n    for index in range(attempts):\n        try:\n            return transport(payload)\n        except TimeoutError:\n            if index==attempts-1:\n                raise\n            wait(0.25*(2**index))",
+      "solutionExplanation": "Retry only the documented transient error; other failures should remain visible. Use the loop index for backoff and re-raise when it reaches attempts - 1. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Recover",
+          "code": "calls=[]; waits=[]; payload={\"prompt\":\"x\"}\ndef fake(p):\n    calls.append(p)\n    if len(calls)<3: raise TimeoutError(\"temporary\")\n    return {\"text\":\"ok\"}\nassert send_with_retry(payload,fake,waits.append)=={\"text\":\"ok\"} and waits==[0.25,0.5] and len(calls)==3",
+          "explanation": "Retry recovery must preserve response and backoff policy."
+        },
+        {
+          "name": "Immediate success",
+          "code": "waits=[]; assert send_with_retry({},lambda p:7,waits.append)==7 and waits==[]",
+          "explanation": "A successful first call needs no delay."
+        },
+        {
+          "name": "Final failure",
+          "code": "waits=[]\ndef fail(p): raise TimeoutError(\"down\")\ntry:\n    send_with_retry({},fail,waits.append,2)\nexcept TimeoutError:\n    pass\nelse:\n    raise AssertionError(\"Failure hidden\")\nassert waits==[0.25]",
+          "explanation": "The final failure propagates without another wait."
+        }
+      ],
+      "hints": [
+        "Retry only the documented transient error; other failures should remain visible.",
+        "Use the loop index for backoff and re-raise when it reaches attempts - 1."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Treating attempts as extra retries and making one too many calls.",
+      "Actually sleeping in a deterministic unit test."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "retries",
+      "testing"
+    ],
+    "project": {
+      "id": "advanced-capstone",
+      "title": "Reusable simulated AI client",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "advanced-project-client",
+    "module": "advanced",
+    "section": "Reusable AI client project",
+    "title": "AI client · 3. Compose the reusable client",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "advanced-project-retry"
+    ],
+    "objectives": [
+      "Explain ai client · 3. compose the reusable client in a reusable AI component.",
+      "Implement the stated behavior and verify ordinary and edge cases."
+    ],
+    "explanation": "The final client composes the simulated transport and bounded retry policy into a small public interface. Its constructor receives transport, wait, and an event sink; generate accepts a prompt and an output limit. Validate inputs before any attempt, send a normalized payload through the retry helper, validate the resulting response, and only then record a successful operational event.\n\nThe event includes usage and the simulated flag, not raw prompt or answer text. This keeps the distinction between the fake service and any later real transport visible. The returned response remains structured so callers can inspect text and metadata. The completed project demonstrates dependency injection, contracts, retries, and observability without paid services. A real integration would additionally implement authentication, HTTP timeouts, status mapping, and secure server-side secret handling; those concerns should preserve rather than bypass the client’s tested boundaries.",
+    "why": "A tested client wrapper is a reusable building block for larger AI applications. Keeping transport replaceable and simulation visible lets learners practice integration behavior now, then connect a real service later without conflating deterministic tests with live model-quality evidence.",
+    "example": {
+      "code": "response={\"text\":\"one two\",\"usage\":2,\"simulated\":True}\nevent={\"event\":\"generation_complete\",\"usage\":response[\"usage\"],\"simulated\":response[\"simulated\"]}\nprint(event)\n# Success events expose usage and simulation status, not private text.",
+      "explanation": "The example derives a narrow success event from a validated response. It deliberately preserves simulated so observability cannot silently turn a fake transport into an apparent real model call. The final client will produce this event only after successful retries and schema validation, while returning the complete structured response to its caller for application use."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When should generation_complete be recorded?",
+      "options": [
+        "After validated success",
+        "Before the first attempt",
+        "After any transport exception"
+      ],
+      "answer": "After validated success",
+      "explanation": "Validate the request before retrying and validate the response before emitting success."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Complete AIClient.generate(prompt,max_words=20) using supplied send_with_retry. Validate nonblank string prompt and positive exact-int limit, send stripped prompt, and require response dict with string text, nonnegative exact-int usage, and bool simulated. Append {event:\"generation_complete\",usage,simulated} only after valid success, then return response. Invalid schemas raise ValueError.",
+      "starter": "def simulated_transport(payload):\n    prompt=payload.get(\"prompt\")\n    limit=payload.get(\"max_words\")\n    if not isinstance(prompt,str) or not prompt.strip():\n        raise ValueError(\"Invalid prompt\")\n    if type(limit) is not int or limit<=0:\n        raise ValueError(\"Invalid max_words\")\n    words=prompt.split()[:limit]\n    return {\"text\":\" \".join(words),\"usage\":len(words),\"simulated\":True}\n\ndef send_with_retry(payload, transport, wait, attempts=3):\n    if attempts<=0:\n        raise ValueError(\"attempts must be positive\")\n    for index in range(attempts):\n        try:\n            return transport(payload)\n        except TimeoutError:\n            if index==attempts-1:\n                raise\n            wait(0.25*(2**index))\n\nclass AIClient:\n    def __init__(self, transport, wait, events):\n        self.transport=transport\n        self.wait=wait\n        self.events=events\n\n    def generate(self, prompt, max_words=20):\n        pass",
+      "solution": "def simulated_transport(payload):\n    prompt=payload.get(\"prompt\")\n    limit=payload.get(\"max_words\")\n    if not isinstance(prompt,str) or not prompt.strip():\n        raise ValueError(\"Invalid prompt\")\n    if type(limit) is not int or limit<=0:\n        raise ValueError(\"Invalid max_words\")\n    words=prompt.split()[:limit]\n    return {\"text\":\" \".join(words),\"usage\":len(words),\"simulated\":True}\n\ndef send_with_retry(payload, transport, wait, attempts=3):\n    if attempts<=0:\n        raise ValueError(\"attempts must be positive\")\n    for index in range(attempts):\n        try:\n            return transport(payload)\n        except TimeoutError:\n            if index==attempts-1:\n                raise\n            wait(0.25*(2**index))\n\nclass AIClient:\n    def __init__(self, transport, wait, events):\n        self.transport=transport\n        self.wait=wait\n        self.events=events\n\n    def generate(self, prompt, max_words=20):\n        if not isinstance(prompt,str) or not prompt.strip() or type(max_words) is not int or max_words<=0:\n            raise ValueError(\"Invalid request\")\n        payload={\"prompt\":prompt.strip(),\"max_words\":max_words}\n        response=send_with_retry(payload,self.transport,self.wait)\n        if not isinstance(response,dict) or not isinstance(response.get(\"text\"),str) or type(response.get(\"usage\")) is not int or response[\"usage\"]<0 or type(response.get(\"simulated\")) is not bool:\n            raise ValueError(\"Invalid response\")\n        self.events.append({\"event\":\"generation_complete\",\"usage\":response[\"usage\"],\"simulated\":response[\"simulated\"]})\n        return response",
+      "solutionExplanation": "Validate the request before retrying and validate the response before emitting success. Reuse send_with_retry, then check exact numeric and boolean field types and append only the documented event fields. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "tests": [
+        {
+          "name": "Complete client",
+          "code": "events=[]; waits=[]; c=AIClient(simulated_transport,waits.append,events); r=c.generate(\" one two three \",2); assert r=={\"text\":\"one two\",\"usage\":2,\"simulated\":True} and events==[{\"event\":\"generation_complete\",\"usage\":2,\"simulated\":True}] and waits==[]",
+          "explanation": "The complete pipeline preserves simulation and records minimal success metadata."
+        },
+        {
+          "name": "Retry integration",
+          "code": "state={\"n\":0}; waits=[]; events=[]\ndef fake(p):\n    state[\"n\"]+=1\n    if state[\"n\"]==1: raise TimeoutError(\"again\")\n    return simulated_transport(p)\nassert AIClient(fake,waits.append,events).generate(\"hi\")[\"text\"]==\"hi\" and waits==[0.25] and len(events)==1",
+          "explanation": "A recovered request emits one success event, not one per attempt."
+        },
+        {
+          "name": "Reject malformed response",
+          "code": "events=[]\ntry:\n    AIClient(lambda p:{\"text\":\"x\",\"usage\":True,\"simulated\":True},lambda d:None,events).generate(\"hi\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid usage accepted\")\nassert events==[]",
+          "explanation": "Boolean usage is not an integer token count and must not be logged as success."
+        }
+      ],
+      "hints": [
+        "Validate the request before retrying and validate the response before emitting success.",
+        "Reuse send_with_retry, then check exact numeric and boolean field types and append only the documented event fields."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Logging an attempt as successful before response validation.",
+      "Dropping the simulated flag and implying actual model inference."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "api-clients",
+      "composition",
+      "logging"
+    ],
+    "project": {
+      "id": "advanced-capstone",
+      "title": "Reusable simulated AI client",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

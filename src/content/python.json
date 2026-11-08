@@ -1,0 +1,1534 @@
+[
+  {
+    "id": "python-syntax",
+    "module": "python",
+    "section": "Everyday Python",
+    "title": "A Python refresher with real data",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain a python refresher with real data using a concrete Python example.",
+      "Implement and test which operator includes a score equal to the threshold."
+    ],
+    "explanation": "Python uses indentation to group statements. A colon opens an indented block after a function, loop, or condition. Names refer to objects; you do not declare a fixed type before assigning a value. Comparisons such as >= produce booleans, while assignment with = binds a name. A for loop visits the items of an iterable directly, so you rarely need to manage an index yourself.\n\nConsider filtering model confidence scores. Start an empty result list, inspect each score, and append only scores that meet a threshold. This separates the decision from the output construction. Pay attention to the boundary: “at least” means >=, not >. Indentation determines whether the return happens after all scores are examined or prematurely during the first loop iteration.",
+    "why": "AI applications constantly turn raw model outputs into useful decisions. A correct threshold boundary and a loop that processes every item matter more than compact syntax: an off-by-one condition can silently discard valid predictions or accept uncertain ones.",
+    "example": {
+      "code": "scores = [0.2, 0.85, 0.7]\naccepted = []\nfor score in scores:\n    if score >= 0.7:  # Include the boundary.\n        accepted.append(score)\nprint(accepted)  # [0.85, 0.7]",
+      "explanation": "The loop binds score to each number in turn. The conditional body runs only for qualifying numbers, while the outer loop continues regardless. append mutates the existing list. The final print sits outside both indented blocks, so it displays the complete collection rather than a partial result after each comparison."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which operator includes a score equal to the threshold?",
+      "options": [
+        ">",
+        ">=",
+        "=="
+      ],
+      "answer": ">=",
+      "explanation": "Use >= to include the boundary and append each qualifying score."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement passing(scores, threshold). Return a new list containing every numeric score at least threshold, preserving order. An empty input returns []. Do not change the input list.",
+      "starter": "def passing(scores, threshold):\n    # Return all qualifying scores in their original order.\n    pass",
+      "solution": "def passing(scores, threshold):\n    result = []\n    for score in scores:\n        if score >= threshold:\n            result.append(score)\n    return result",
+      "solutionExplanation": "Use >= to include the boundary and append each qualifying score. Create the list before the loop and return it after the loop finishes. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Boundary",
+          "code": "assert passing([0.2, 0.7, 0.9], 0.7) == [0.7, 0.9]",
+          "explanation": "The threshold itself must qualify."
+        },
+        {
+          "name": "Case 2: Order",
+          "code": "assert passing([1, 0, 0.8], 0.5) == [1, 0.8]",
+          "explanation": "Keep input order rather than sorting."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert passing([], 0.5) == []",
+          "explanation": "There may be no predictions."
+        }
+      ],
+      "hints": [
+        "Use >= to include the boundary and append each qualifying score.",
+        "Create the list before the loop and return it after the loop finishes."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Returning inside the loop skips later inputs.",
+      "Using > excludes a score exactly at the threshold."
+    ],
+    "xp": 20,
+    "tags": [
+      "syntax",
+      "loops",
+      "conditions"
+    ]
+  },
+  {
+    "id": "python-sequences",
+    "module": "python",
+    "section": "Everyday Python",
+    "title": "Lists, tuples, and useful slices",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-syntax"
+    ],
+    "objectives": [
+      "Explain lists, tuples, and useful slices using a concrete Python example.",
+      "Implement and test what is [10, 20, 30, 40][1:3]."
+    ],
+    "explanation": "A list is an ordered, mutable sequence. A tuple is an ordered sequence whose element references cannot be reassigned. Both support indexing from zero, negative indices counted from the end, and slices. A slice sequence[start:stop] includes start but excludes stop. Omitting an endpoint uses the beginning or end. Slicing beyond a list’s length is safe and returns the available items.\n\nUse a list for a changing batch of documents and a tuple for a fixed pair such as a document identifier and its score. Copying a list with slicing creates a new outer container but does not deeply copy nested objects. When selecting a batch, a slice is clearer than a manual loop because the boundary behavior is built in. Explicitly decide how zero or negative requested sizes should behave before writing code.",
+    "why": "Model services often process fixed-size batches while retaining document order. Understanding slices makes batching predictable, and knowing that lists are mutable prevents accidental changes to a shared collection of documents passed between pipeline stages.",
+    "example": {
+      "code": "documents = [\"a\", \"b\", \"c\", \"d\"]\nwindow = documents[1:3]  # Start included; stop excluded.\npair = (\"b\", 0.91)      # A fixed two-field record.\nprint(window, pair[0])  # ['b', 'c'] b",
+      "explanation": "The slice selects positions one and two, producing a new list. The original documents list still contains all four identifiers. The tuple records two related values in a stable order; indexing retrieves its first value. Neither operation needs a special case when the selected slice ends at the collection boundary."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "What is [10, 20, 30, 40][1:3]?",
+      "options": [
+        "[10, 20]",
+        "[20, 30]",
+        "[20, 30, 40]"
+      ],
+      "answer": "[20, 30]",
+      "explanation": "A slice items[:size] selects up to size entries without mutating the list."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement first_batch(items, size). Return a new list with at most size items from the beginning. For size <= 0 return []; larger sizes return all items.",
+      "starter": "def first_batch(items, size):\n    pass",
+      "solution": "def first_batch(items, size):\n    if size <= 0:\n        return []\n    return items[:size]",
+      "solutionExplanation": "A slice items[:size] selects up to size entries without mutating the list. Handle size <= 0 first because a negative slice endpoint means something different. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Normal",
+          "code": "assert first_batch([1,2,3],2) == [1,2]",
+          "explanation": "The stop index excludes later elements."
+        },
+        {
+          "name": "Case 2: Large",
+          "code": "assert first_batch([1],5) == [1]",
+          "explanation": "Do not raise when fewer items are available."
+        },
+        {
+          "name": "Case 3: Zero and negative",
+          "code": "assert first_batch([1,2],0) == [] and first_batch([1,2],-1) == []",
+          "explanation": "A negative requested size is not a negative slice endpoint."
+        }
+      ],
+      "hints": [
+        "A slice items[:size] selects up to size entries without mutating the list.",
+        "Handle size <= 0 first because a negative slice endpoint means something different."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Treating the stop index as included.",
+      "Using a negative size directly and unintentionally selecting almost the whole list."
+    ],
+    "xp": 20,
+    "tags": [
+      "lists",
+      "tuples",
+      "slicing"
+    ]
+  },
+  {
+    "id": "python-mappings",
+    "module": "python",
+    "section": "Everyday Python",
+    "title": "Dictionaries, sets, and document identities",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-sequences"
+    ],
+    "objectives": [
+      "Explain dictionaries, sets, and document identities using a concrete Python example.",
+      "Implement and test which collection is best for repeated membership checks without duplicates."
+    ],
+    "explanation": "A dictionary maps unique, hashable keys to values. Looking up a missing key with square brackets raises KeyError; get lets you supply a default instead. A set stores unique, hashable elements and supports fast membership checks. Lists preserve duplicates, while sets represent membership rather than a reliable presentation order. A tuple of immutable values can be a key, but a list cannot.\n\nFor a document collection, use a set to remember identifiers already encountered and a list to preserve the first occurrence of each document. A dictionary is useful when you need both an identifier and associated metadata. Choosing a collection by its meaning makes the algorithm easier to reason about. Deduplication should state whether the first or last occurrence wins, because both are plausible and lead to different results.",
+    "why": "Document ingestion frequently receives overlapping exports or repeated pages. Explicit identity handling prevents duplicate search results and inflated evaluation counts, while dictionary defaults help process records whose optional metadata is genuinely absent rather than malformed.",
+    "example": {
+      "code": "seen = set()\nunique = []\nfor word in [\"rag\", \"python\", \"rag\"]:\n    if word not in seen:\n        seen.add(word)\n        unique.append(word)\nmetadata = {\"source\": \"guide\"}\nprint(unique, metadata.get(\"author\", \"unknown\"))",
+      "explanation": "The set answers only whether a word has appeared before. The separate list retains arrival order, so the result is predictable. get supplies a default for absent optional metadata without changing the dictionary. The same pattern extends to document IDs, where equality defines whether two records count as duplicates."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which collection is best for repeated membership checks without duplicates?",
+      "options": [
+        "list",
+        "set",
+        "string"
+      ],
+      "answer": "set",
+      "explanation": "Track membership with a set and append an ID only the first time it appears."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement unique_ids(ids) for a list of strings. Return each ID once, keeping first-appearance order. Do not sort; [] returns [].",
+      "starter": "def unique_ids(ids):\n    pass",
+      "solution": "def unique_ids(ids):\n    seen = set()\n    result = []\n    for identifier in ids:\n        if identifier not in seen:\n            seen.add(identifier)\n            result.append(identifier)\n    return result",
+      "solutionExplanation": "Track membership with a set and append an ID only the first time it appears. Do not return list(set(ids)): its ordering is not the first-occurrence contract. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Duplicates",
+          "code": "assert unique_ids([\"b\",\"a\",\"b\",\"c\",\"a\"]) == [\"b\",\"a\",\"c\"]",
+          "explanation": "The first appearance determines output position."
+        },
+        {
+          "name": "Case 2: Already unique",
+          "code": "assert unique_ids([\"x\",\"y\"]) == [\"x\",\"y\"]",
+          "explanation": "Unique entries keep their order."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert unique_ids([]) == []",
+          "explanation": "An empty collection has no IDs."
+        }
+      ],
+      "hints": [
+        "Track membership with a set and append an ID only the first time it appears.",
+        "Do not return list(set(ids)): its ordering is not the first-occurrence contract."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Relying on set iteration order for output.",
+      "Using mutable dictionaries as set members."
+    ],
+    "xp": 20,
+    "tags": [
+      "dictionaries",
+      "sets",
+      "deduplication"
+    ]
+  },
+  {
+    "id": "python-functions",
+    "module": "python",
+    "section": "Everyday Python",
+    "title": "Functions return reusable results",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-mappings"
+    ],
+    "objectives": [
+      "Explain functions return reusable results using a concrete Python example.",
+      "Implement and test a function that only prints a number returns that number.."
+    ],
+    "explanation": "A function names a reusable computation. Its parameters describe the inputs, and return provides the result to its caller. Printing is a side effect: it displays information but does not return that information for another function to use. A function with no explicit return evaluates to None. Keep this distinction clear when a test calls your function and compares its output.\n\nA small function should have a clear input and output contract. For a mean confidence score, define what an empty batch means instead of allowing an accidental division by zero. Computing a value without changing the input makes a function easier to reuse and test. Multiple return statements are useful when they express early handling of an edge case, followed by the ordinary calculation. Names should describe the result the caller receives.",
+    "why": "An AI pipeline is easier to test when each stage returns a value that the next stage consumes. Separating computation from display lets the same scoring function work in a notebook, an API, and an automated evaluation job.",
+    "example": {
+      "code": "def total_tokens(counts):\n    # Return a value; let the caller decide whether to print.\n    return sum(counts)\n\nbudget_used = total_tokens([4, 7, 3])\nprint(budget_used)  # 14",
+      "explanation": "The function receives a list and returns a number. The caller stores that number before printing it, so it could just as easily compare it against a budget or serialize it into JSON. An empty list works naturally here because sum of an empty iterable is zero; other aggregations need an explicit policy."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "A function that only prints a number returns that number.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "return sends a result to the caller; print only displays it."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement mean_score(scores). Return the arithmetic mean as a number; return 0.0 for an empty list. Inputs are numeric and must remain unchanged.",
+      "starter": "def mean_score(scores):\n    pass",
+      "solution": "def mean_score(scores):\n    if not scores:\n        return 0.0\n    return sum(scores) / len(scores)",
+      "solutionExplanation": "return sends a result to the caller; print only displays it. Handle the empty list before calculating sum(scores) / len(scores). The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Mean",
+          "code": "assert abs(mean_score([0.2,0.8])-0.5) < 1e-9",
+          "explanation": "Add scores and divide by the number of entries."
+        },
+        {
+          "name": "Case 2: Single",
+          "code": "assert mean_score([0.7]) == 0.7",
+          "explanation": "One score is its own mean."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert mean_score([]) == 0.0",
+          "explanation": "The empty-list policy avoids division by zero."
+        }
+      ],
+      "hints": [
+        "return sends a result to the caller; print only displays it.",
+        "Handle the empty list before calculating sum(scores) / len(scores)."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Printing the result and implicitly returning None.",
+      "Dividing by zero on an empty batch."
+    ],
+    "xp": 20,
+    "tags": [
+      "functions",
+      "return-values"
+    ]
+  },
+  {
+    "id": "python-arguments",
+    "module": "python",
+    "section": "Everyday Python",
+    "title": "Arguments, defaults, and local scope",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-functions"
+    ],
+    "objectives": [
+      "Explain arguments, defaults, and local scope using a concrete Python example.",
+      "Implement and test which default avoids sharing a mutable list across calls."
+    ],
+    "explanation": "Parameters are the names in a function definition; arguments are the objects supplied at a call. Positional arguments match by order, while keyword arguments match by parameter name. A default allows an argument to be omitted. Python evaluates default expressions once when the function is defined, so a mutable default list or dictionary is shared across calls rather than freshly constructed each time.\n\nUse None as a sentinel when each call needs a new collection. A function’s local names do not normally alter names outside the function, but mutating an object passed by the caller does affect that shared object. Copying a dictionary before adding defaults is one way to promise nonmutation. This is a contract decision, not a requirement that every function must copy everything. Make the decision explicit and test it.",
+    "why": "Request options and model settings are often reused across calls. A shared mutable default or an unexpected mutation can make one user’s settings leak into a later request, creating failures that are difficult to reproduce from a single isolated call.",
+    "example": {
+      "code": "def options(timeout=10, headers=None):\n    headers = {} if headers is None else dict(headers)\n    headers[\"Accept\"] = \"application/json\"\n    return {\"timeout\": timeout, \"headers\": headers}\n\nprint(options(timeout=3))",
+      "explanation": "The default None is immutable and acts as a signal to allocate a new dictionary. When the caller does provide headers, dict creates a separate outer mapping before a new entry is added. Calling with a keyword makes the meaning of three obvious, and returning the options keeps configuration construction independent of networking."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which default avoids sharing a mutable list across calls?",
+      "options": [
+        "items=[]",
+        "items=None",
+        "items=list()"
+      ],
+      "answer": "items=None",
+      "explanation": "Use None as a sentinel and allocate or copy a dictionary inside each call."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement with_model(settings=None, model=\"small\"). Return a fresh dictionary containing the supplied settings plus model, replacing an existing model key. Never mutate settings.",
+      "starter": "def with_model(settings=None, model=\"small\"):\n    pass",
+      "solution": "def with_model(settings=None, model=\"small\"):\n    result = {} if settings is None else dict(settings)\n    result[\"model\"] = model\n    return result",
+      "solutionExplanation": "Use None as a sentinel and allocate or copy a dictionary inside each call. Set result[\"model\"] after copying so the explicit argument wins over an existing key. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Default",
+          "code": "assert with_model() == {\"model\":\"small\"}",
+          "explanation": "Omitting settings still returns an independent mapping."
+        },
+        {
+          "name": "Case 2: Copy",
+          "code": "s={\"temperature\":0.2}; r=with_model(s,\"large\"); assert r == {\"temperature\":0.2,\"model\":\"large\"} and s == {\"temperature\":0.2}",
+          "explanation": "The caller’s dictionary must remain unchanged."
+        },
+        {
+          "name": "Case 3: Isolation",
+          "code": "a=with_model(); a[\"x\"]=1; assert \"x\" not in with_model()",
+          "explanation": "Separate calls must not share mutable defaults."
+        }
+      ],
+      "hints": [
+        "Use None as a sentinel and allocate or copy a dictionary inside each call.",
+        "Set result[\"model\"] after copying so the explicit argument wins over an existing key."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using settings={} as a default.",
+      "Assigning directly into the caller’s dictionary."
+    ],
+    "xp": 20,
+    "tags": [
+      "arguments",
+      "scope",
+      "defaults"
+    ]
+  },
+  {
+    "id": "python-checkpoint-collections",
+    "module": "python",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: curate a prediction batch",
+    "minutes": 10,
+    "difficulty": "Foundation",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "python-arguments"
+    ],
+    "objectives": [
+      "Explain checkpoint: curate a prediction batch using a concrete Python example.",
+      "Implement and test order the operations for a qualifying record.."
+    ],
+    "explanation": "This checkpoint combines loops, mappings, sets, and functions. A prediction record has an identifier and a confidence score. The task is to keep the first record for each identifier whose score reaches a threshold. Notice that a record rejected for low confidence should not prevent a later qualifying record with the same identifier from being selected. The order of operations therefore matters.\n\nFirst inspect the score, then check whether the identifier has already been accepted, then add it to the result and membership set. Returning a new list of identifiers avoids modifying the supplied records. Work through a tiny example by hand before writing code: a low-scoring duplicate followed by a high-scoring one reveals whether you mark IDs too early. The empty collection and exact-threshold cases complete the contract.",
+    "why": "Production prediction streams can contain retries and revised scores. Combining thresholding with deduplication correctly ensures that a failed early prediction does not hide a later usable result, while deterministic ordering makes downstream tests and audits reproducible.",
+    "example": {
+      "code": "records = [{\"id\": \"a\", \"score\": 0.1}, {\"id\": \"a\", \"score\": 0.9}]\nfor record in records:\n    eligible = record[\"score\"] >= 0.8\n    print(record[\"id\"], eligible)  # a False, then a True",
+      "explanation": "The two records share an identity but have different eligibility. A membership set should represent accepted identifiers, not every identifier ever observed. This example isolates the filtering decision before adding deduplication. The checkpoint asks you to combine those decisions and preserve the first accepted occurrence in the returned result."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the operations for a qualifying record.",
+      "options": [
+        "Append ID",
+        "Read score",
+        "Check accepted IDs"
+      ],
+      "answer": [
+        "Read score",
+        "Check accepted IDs",
+        "Append ID"
+      ],
+      "explanation": "Filter by score before recording an ID as accepted."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement curate(records, threshold). Each record has string id and numeric score. Return IDs of qualifying records, once each, in first qualifying appearance order. Preserve inputs.",
+      "starter": "def curate(records, threshold):\n    pass",
+      "solution": "def curate(records, threshold):\n    seen = set()\n    result = []\n    for record in records:\n        if record[\"score\"] >= threshold and record[\"id\"] not in seen:\n            seen.add(record[\"id\"])\n            result.append(record[\"id\"])\n    return result",
+      "solutionExplanation": "Filter by score before recording an ID as accepted. Combine >= threshold with id not in seen; update both the set and output list inside that condition. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Later qualification",
+          "code": "assert curate([{\"id\":\"a\",\"score\":0.1},{\"id\":\"a\",\"score\":0.9}],0.8) == [\"a\"]",
+          "explanation": "A rejected record must not reserve the identifier."
+        },
+        {
+          "name": "Case 2: Order and boundary",
+          "code": "assert curate([{\"id\":\"b\",\"score\":0.5},{\"id\":\"a\",\"score\":0.8},{\"id\":\"b\",\"score\":1}],0.5)==[\"b\",\"a\"]",
+          "explanation": "Include the boundary and avoid repeated accepted IDs."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert curate([],0.5)==[]",
+          "explanation": "No records means no output."
+        }
+      ],
+      "hints": [
+        "Filter by score before recording an ID as accepted.",
+        "Combine >= threshold with id not in seen; update both the set and output list inside that condition."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Marking every observed ID as seen, even rejected ones.",
+      "Returning full records when the contract asks for IDs."
+    ],
+    "xp": 50,
+    "tags": [
+      "loops",
+      "sets",
+      "functions",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "python-comprehensions",
+    "module": "python",
+    "section": "Transforming data",
+    "title": "Readable list and dictionary comprehensions",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-checkpoint-collections"
+    ],
+    "objectives": [
+      "Explain readable list and dictionary comprehensions using a concrete Python example.",
+      "Implement and test in [x * 2 for x in [1, 2, 3] if x > 1], what is returned."
+    ],
+    "explanation": "A comprehension builds a collection from an iterable using an expression and an optional filter. In [transform(x) for x in items if keep(x)], read the for clause first: it tells you what each x represents. The if clause decides which items survive, and the initial expression produces the output value. A dictionary comprehension uses key: value in place of the single output expression.\n\nComprehensions are useful when the transformation fits naturally in one line. Complex branching, side effects, or nested operations are often clearer in an ordinary loop. Repeated dictionary keys overwrite earlier values, so building a lookup assumes either uniqueness or an intentional last-value-wins policy. Keep filtering separate from mutation and do not use a comprehension merely to trigger print or append repeatedly; its purpose is to construct a value.",
+    "why": "Feature extraction and API response normalization often require a simple mapping plus filtering. Comprehensions express those transformations precisely, but understanding overwrite behavior is essential when turning document records into an identifier-to-score lookup for retrieval.",
+    "example": {
+      "code": "rows = [{\"id\": \"a\", \"score\": 0.2}, {\"id\": \"b\", \"score\": 0.9}]\nhigh = {row[\"id\"]: row[\"score\"] for row in rows if row[\"score\"] >= 0.5}\nlengths = [len(name) for name in [\"Ada\", \"Turing\"]]\nprint(high, lengths)",
+      "explanation": "The dictionary comprehension retains only rows satisfying the threshold and uses their IDs as keys. The list comprehension computes one length per input name with no filter. Each expression returns a new collection, leaving the original data intact. The different brackets communicate whether the result is an ordered sequence or a keyed lookup."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "In [x * 2 for x in [1, 2, 3] if x > 1], what is returned?",
+      "options": [
+        "[2, 4, 6]",
+        "[4, 6]",
+        "[2, 3]"
+      ],
+      "answer": "[4, 6]",
+      "explanation": "Use a dictionary comprehension with text as the key and len(text) as its value."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement lengths(texts). Return a dictionary from each nonempty string to its character length. Duplicate strings naturally collapse to one key; whitespace-only strings are nonempty and are included.",
+      "starter": "def lengths(texts):\n    pass",
+      "solution": "def lengths(texts):\n    return {text: len(text) for text in texts if text}",
+      "solutionExplanation": "Use a dictionary comprehension with text as the key and len(text) as its value. The if text filter excludes only empty strings, not strings containing spaces. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Words",
+          "code": "assert lengths([\"AI\",\"Python\"]) == {\"AI\":2,\"Python\":6}",
+          "explanation": "Map strings to lengths."
+        },
+        {
+          "name": "Case 2: Empty strings",
+          "code": "assert lengths([\"\", \" \", \"x\"]) == {\" \":1,\"x\":1}",
+          "explanation": "Only the empty string is excluded."
+        },
+        {
+          "name": "Case 3: Duplicates",
+          "code": "assert lengths([\"AI\",\"AI\"]) == {\"AI\":2} and lengths([])=={}",
+          "explanation": "Dictionary keys are unique."
+        }
+      ],
+      "hints": [
+        "Use a dictionary comprehension with text as the key and len(text) as its value.",
+        "The if text filter excludes only empty strings, not strings containing spaces."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Calling strip when the contract asks only to remove empty strings.",
+      "Using list brackets when a dictionary is required."
+    ],
+    "xp": 20,
+    "tags": [
+      "comprehensions",
+      "dictionaries"
+    ]
+  },
+  {
+    "id": "python-text",
+    "module": "python",
+    "section": "Transforming data",
+    "title": "Normalize text without losing meaning",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-comprehensions"
+    ],
+    "objectives": [
+      "Explain normalize text without losing meaning using a concrete Python example.",
+      "Implement and test fill in the method that separates a string on arbitrary whitespace: text.____()."
+    ],
+    "explanation": "Python strings are immutable sequences of Unicode characters. Methods such as lower, strip, and replace return new strings; they do not modify the original variable. split without an argument treats consecutive whitespace as a separator and drops leading and trailing empty pieces. Joining those pieces with a single space gives a useful whitespace normalization operation.\n\nText preprocessing is a policy choice. Lowercasing can help case-insensitive keyword matching but can destroy distinctions in code, identifiers, or names. Whitespace normalization is often safer for prose, although it also removes paragraph boundaries. Keep the original text when presentation or citation offsets matter. In this lesson, the contract intentionally lowercases and normalizes whitespace for a simplified search key. The output is suitable for matching, not a lossless replacement for the source document.",
+    "why": "Keyword search can miss equivalent phrases because of capitalization or irregular whitespace. A documented normalization function gives ingestion and querying the same representation while making clear which information was deliberately removed from the original source.",
+    "example": {
+      "code": "raw = \"  Neural\\t networks\\nare useful.  \"\nwords = raw.split()  # Whitespace runs become separators.\nnormalized = \" \".join(words)\nprint(normalized)  # Neural networks are useful.",
+      "explanation": "split without a delimiter handles spaces, tabs, and newlines consistently. join inserts exactly one space between the resulting words, with no extra space at either end. The original raw string still exists unchanged. This example preserves case; the exercise adds an explicit lowercasing policy for search keys rather than silently applying it everywhere."
+    },
+    "activity": {
+      "type": "fill",
+      "question": "Fill in the method that separates a string on arbitrary whitespace: text.____()",
+      "options": [
+        "split",
+        "strip",
+        "join"
+      ],
+      "answer": "split",
+      "explanation": "split() without arguments handles consecutive whitespace; join rebuilds the words."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement search_key(text). Return lowercase text with every whitespace run replaced by one space and no leading/trailing spaces. Empty or whitespace-only input returns \"\".",
+      "starter": "def search_key(text):\n    pass",
+      "solution": "def search_key(text):\n    return \" \".join(text.lower().split())",
+      "solutionExplanation": "split() without arguments handles consecutive whitespace; join rebuilds the words. Apply lower() before or after splitting, then use \" \".join(...). The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Normalize",
+          "code": "assert search_key(\"  Neural\\tNetworks \")==\"neural networks\"",
+          "explanation": "Case and whitespace policies both apply."
+        },
+        {
+          "name": "Case 2: Newlines",
+          "code": "assert search_key(\"A\\n\\nB\") == \"a b\"",
+          "explanation": "Newlines are whitespace too."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert search_key(\"\")==\"\" and search_key(\" \\t\\n\")==\"\"",
+          "explanation": "No words produce an empty key."
+        }
+      ],
+      "hints": [
+        "split() without arguments handles consecutive whitespace; join rebuilds the words.",
+        "Apply lower() before or after splitting, then use \" \".join(...)."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Calling split(\" \") leaves tabs and repeated-space artifacts.",
+      "Expecting lower() to mutate the original string."
+    ],
+    "xp": 20,
+    "tags": [
+      "strings",
+      "text-normalization"
+    ]
+  },
+  {
+    "id": "python-exceptions",
+    "module": "python",
+    "section": "Transforming data",
+    "title": "Handle expected failures explicitly",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-text"
+    ],
+    "objectives": [
+      "Explain handle expected failures explicitly using a concrete Python example.",
+      "Implement and test which exception does int(\"many\") raise."
+    ],
+    "explanation": "Exceptions represent failures that interrupt ordinary control flow. A try block encloses the operation that may fail; an except clause handles a specific exception type. Catching every exception can hide programming mistakes, such as referring to a misspelled variable. Prefer a small try block and a narrow exception type so that unrelated bugs still surface with a traceback.\n\nParsing data from outside the program is a common source of expected failures. int can parse an integer string but raises ValueError for invalid content. It can also raise TypeError for unsupported objects. Decide which inputs your function accepts and what failure behavior belongs in its contract. Returning a default is reasonable for optional metadata; raising a descriptive exception is better when continuing would produce incorrect results. Do not silently replace every failure with zero without explaining what zero means.",
+    "why": "Document metadata and model responses may contain missing or malformed values. Narrow error handling lets an ingestion job recover from expected bad input while preserving tracebacks for defects in your own pipeline, rather than hiding them behind a generic fallback.",
+    "example": {
+      "code": "def optional_count(text):\n    try:\n        return int(text)\n    except ValueError:\n        return None  # Invalid content is explicitly absent.\n\nprint(optional_count(\"12\"), optional_count(\"many\"))",
+      "explanation": "The conversion is the only operation inside try, so the handler has a clear purpose. ValueError identifies invalid textual content; other programming errors are not swallowed. None distinguishes a missing count from a legitimate zero. The exercise uses a caller-provided default and a nonnegative constraint, making the recovery policy part of the function interface."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which exception does int(\"many\") raise?",
+      "options": [
+        "KeyError",
+        "ValueError",
+        "IndexError"
+      ],
+      "answer": "ValueError",
+      "explanation": "Catch the specific conversion errors ValueError and TypeError."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement parse_count(text, default=0). Parse int-compatible input. Return default for ValueError, TypeError, or a negative parsed integer. Preserve a valid zero.",
+      "starter": "def parse_count(text, default=0):\n    pass",
+      "solution": "def parse_count(text, default=0):\n    try:\n        count = int(text)\n    except (ValueError, TypeError):\n        return default\n    return count if count >= 0 else default",
+      "solutionExplanation": "Catch the specific conversion errors ValueError and TypeError. After conversion, return the default only when the parsed count is negative. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Integer",
+          "code": "assert parse_count(\"12\")==12 and parse_count(\"0\",9)==0",
+          "explanation": "Zero is valid, not a reason to use the default."
+        },
+        {
+          "name": "Case 2: Invalid",
+          "code": "assert parse_count(\"many\",4)==4 and parse_count(None,4)==4",
+          "explanation": "Both invalid content and unsupported None should recover."
+        },
+        {
+          "name": "Case 3: Negative",
+          "code": "assert parse_count(\"-2\",7)==7",
+          "explanation": "Negative counts violate the contract."
+        }
+      ],
+      "hints": [
+        "Catch the specific conversion errors ValueError and TypeError.",
+        "After conversion, return the default only when the parsed count is negative."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using except Exception and hiding unrelated bugs.",
+      "Using count or default, which incorrectly replaces zero."
+    ],
+    "xp": 20,
+    "tags": [
+      "exceptions",
+      "validation"
+    ]
+  },
+  {
+    "id": "python-json",
+    "module": "python",
+    "section": "Transforming data",
+    "title": "JSON is data, not a Python expression",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-exceptions"
+    ],
+    "objectives": [
+      "Explain json is data, not a python expression using a concrete Python example.",
+      "Implement and test valid json automatically guarantees your application schema.."
+    ],
+    "explanation": "JSON is a text format for exchanging structured data. Python’s json.loads parses a JSON string into dictionaries, lists, strings, numbers, booleans, and None. json.dumps performs the reverse transformation. JSON uses double-quoted strings and the literals true, false, and null, which differ from Python spelling. Never use eval to read JSON: evaluating input as code is unnecessary and unsafe.\n\nParsing checks syntax, not your application’s schema. A valid JSON string might describe a list when you expected a dictionary. Validate the top-level shape and required fields after parsing. For a small ingestion endpoint, separating parse errors from shape errors makes feedback more useful. This lesson handles a controlled list-of-strings format and rejects other shapes. Explicit validation prevents later processing code from failing far away from the original bad input.",
+    "why": "AI services commonly return JSON responses and structured extractions. Parsing plus schema validation protects downstream components from plausible-looking but incompatible values, such as a model returning a string where your document pipeline expects a list of document titles.",
+    "example": {
+      "code": "import json\nrecord = {\"id\": \"a\", \"ready\": True, \"note\": None}\nencoded = json.dumps(record)\nrestored = json.loads(encoded)\nprint(encoded)  # JSON uses true and null.\nassert restored == record",
+      "explanation": "dumps serializes Python values into JSON syntax, and loads reconstructs the supported values. The assertion checks a round trip for this simple record. Serialization does not validate whether id is an allowed identifier or whether ready belongs in the domain; those rules are application concerns layered on top of the JSON parser."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Valid JSON automatically guarantees your application schema.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Parse with json.loads, then separately check list shape and string elements."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement load_titles(raw). Parse JSON and return a list only if every item is a string. Raise ValueError for invalid JSON or any other shape. An empty list is valid.",
+      "starter": "import json\n\ndef load_titles(raw):\n    pass",
+      "solution": "import json\n\ndef load_titles(raw):\n    value = json.loads(raw)\n    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):\n        raise ValueError(\"Expected a list of strings\")\n    return value",
+      "solutionExplanation": "Parse with json.loads, then separately check list shape and string elements. json.JSONDecodeError is a ValueError subclass, so malformed JSON already satisfies the required error type. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Strings",
+          "code": "assert load_titles('[\"Python\",\"AI\"]') == [\"Python\",\"AI\"]",
+          "explanation": "Return the parsed list."
+        },
+        {
+          "name": "Case 2: Empty",
+          "code": "assert load_titles(\"[]\") == []",
+          "explanation": "An empty list satisfies the shape contract."
+        },
+        {
+          "name": "Case 3: Reject shape",
+          "code": "for raw in ['{\"title\":\"x\"}', '[1]', \"bad\"]:\n    try:\n        load_titles(raw)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid input accepted\")",
+          "explanation": "JSON parsing alone does not reject a wrong valid-JSON shape."
+        }
+      ],
+      "hints": [
+        "Parse with json.loads, then separately check list shape and string elements.",
+        "json.JSONDecodeError is a ValueError subclass, so malformed JSON already satisfies the required error type."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using eval on untrusted text.",
+      "Checking only that parsing succeeded without validating the resulting shape."
+    ],
+    "xp": 20,
+    "tags": [
+      "json",
+      "schema-validation"
+    ]
+  },
+  {
+    "id": "python-files",
+    "module": "python",
+    "section": "Transforming data",
+    "title": "Read files with explicit ownership",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-json"
+    ],
+    "objectives": [
+      "Explain read files with explicit ownership using a concrete Python example.",
+      "Implement and test what guarantees a file is closed when a block raises an exception."
+    ],
+    "explanation": "A file object connects Python code to a stream of bytes or text. Opening a text file with encoding=\"utf-8\" makes the decoding policy explicit instead of depending on the machine’s default. A with block closes the file even if an exception occurs while reading. This is important because file handles are limited resources and buffered writes need to be flushed.\n\nPath objects from pathlib make paths easier to compose and inspect. Reading a file does not guarantee that its contents are valid for your application; parse and validate afterward. In the browser, Pyodide’s file system is virtual and does not automatically expose your device’s files. Exercise-created files live in that runtime and may disappear when the worker restarts. User-visible persistent progress belongs in browser storage, not in an assumed permanent Python working directory.",
+    "why": "Ingestion pipelines read exported documents and write intermediate records. Explicit encodings and reliable closure avoid platform-dependent bugs, while distinguishing a virtual teaching file system from real persistent storage prevents incorrect assumptions about where user documents are saved.",
+    "example": {
+      "code": "from pathlib import Path\npath = Path(\"example-note.txt\")\nwith path.open(\"w\", encoding=\"utf-8\") as stream:\n    stream.write(\"café\\nPython\\n\")\nwith path.open(encoding=\"utf-8\") as stream:\n    first = stream.readline().strip()\nprint(first)  # café\npath.unlink()",
+      "explanation": "The first with block writes Unicode text using UTF-8 and closes the stream before the next block reads it. readline reads a single line, while strip removes its line ending here. Removing the example file keeps the virtual workspace tidy. The exercise instead reads all lines and filters blank ones without relying on a particular operating system."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What guarantees a file is closed when a block raises an exception?",
+      "options": [
+        "A with statement",
+        "A print statement",
+        "A global variable"
+      ],
+      "answer": "A with statement",
+      "explanation": "Use with open(path, encoding=\"utf-8\") so closure happens reliably."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement nonempty_lines(path). Read a UTF-8 text file, trim each line, and return only nonempty lines in order. Let file-not-found errors propagate.",
+      "starter": "def nonempty_lines(path):\n    pass",
+      "solution": "def nonempty_lines(path):\n    with open(path, encoding=\"utf-8\") as stream:\n        return [line.strip() for line in stream if line.strip()]",
+      "solutionExplanation": "Use with open(path, encoding=\"utf-8\") so closure happens reliably. Iterate over the stream and strip each line before deciding whether to keep it. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Whitespace",
+          "code": "import tempfile, pathlib\nwith tempfile.TemporaryDirectory() as d:\n    p=pathlib.Path(d)/\"x.txt\"; p.write_text(\" a \\n\\n b\\n\",encoding=\"utf-8\")\n    assert nonempty_lines(p)==[\"a\",\"b\"]",
+          "explanation": "Trim each line and remove blanks."
+        },
+        {
+          "name": "Case 2: Unicode",
+          "code": "import tempfile, pathlib\nwith tempfile.TemporaryDirectory() as d:\n    p=pathlib.Path(d)/\"x.txt\"; p.write_text(\"café\\n\",encoding=\"utf-8\")\n    assert nonempty_lines(p)==[\"café\"]",
+          "explanation": "UTF-8 text should survive decoding."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "import tempfile, pathlib\nwith tempfile.TemporaryDirectory() as d:\n    p=pathlib.Path(d)/\"x.txt\"; p.write_text(\"\",encoding=\"utf-8\")\n    assert nonempty_lines(p)==[]",
+          "explanation": "An empty file has no content lines."
+        }
+      ],
+      "hints": [
+        "Use with open(path, encoding=\"utf-8\") so closure happens reliably.",
+        "Iterate over the stream and strip each line before deciding whether to keep it."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Assuming the machine’s default encoding is always UTF-8.",
+      "Reading device files from Pyodide without a user-provided upload."
+    ],
+    "xp": 20,
+    "tags": [
+      "files",
+      "context-managers"
+    ]
+  },
+  {
+    "id": "python-checkpoint-ingest",
+    "module": "python",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: parse and normalize an export",
+    "minutes": 10,
+    "difficulty": "Developing",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "python-files"
+    ],
+    "objectives": [
+      "Explain checkpoint: parse and normalize an export using a concrete Python example.",
+      "Implement and test order the ingestion stages.."
+    ],
+    "explanation": "An ingestion boundary often combines several simple operations whose order determines correctness. Here a JSON export contains document titles. Parse it, validate that it is a list of strings, normalize whitespace and case, remove empty normalized titles, and keep the first copy of each title. Each transformation has already appeared independently; this checkpoint asks you to compose them without losing their contracts.\n\nValidation should happen before string operations. Otherwise a numeric item produces an incidental attribute error instead of a useful schema error. Deduplication should happen after normalization, because “ Python ” and “python” represent the same normalized title. Keep a separate ordered result and membership set. Work out both the successful path and failure path before coding, and make sure a malformed input cannot be quietly accepted as an empty export.",
+    "why": "Export formats often contain redundant whitespace, duplicate records, or a wrong shape. Combining validation and normalization at a clear boundary makes later embedding or classification stages simpler because they receive a predictable, clean sequence of text values.",
+    "example": {
+      "code": "import json\nraw = '[\" AI \", \"ai\", \"Python\"]'\nvalues = json.loads(raw)\nnormalized = [\" \".join(value.lower().split()) for value in values]\nprint(normalized)  # ['ai', 'ai', 'python']",
+      "explanation": "The example deliberately stops before deduplication to show why normalization must precede identity checks. The first two different source strings become the same search key. A robust pipeline also validates that every value is a string before calling lower. The checkpoint adds those safeguards and removes blank entries from the returned list."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the ingestion stages.",
+      "options": [
+        "Deduplicate normalized text",
+        "Normalize strings",
+        "Parse and validate JSON"
+      ],
+      "answer": [
+        "Parse and validate JSON",
+        "Normalize strings",
+        "Deduplicate normalized text"
+      ],
+      "explanation": "Parse and validate before calling string methods, then normalize before deduplicating."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement ingest_titles(raw). Accept only a JSON list of strings; otherwise raise ValueError. Return nonempty lowercase whitespace-normalized strings, once each in first normalized appearance order.",
+      "starter": "import json\n\ndef ingest_titles(raw):\n    pass",
+      "solution": "import json\n\ndef ingest_titles(raw):\n    values = json.loads(raw)\n    if not isinstance(values,list) or not all(isinstance(v,str) for v in values):\n        raise ValueError(\"Expected a list of strings\")\n    result=[]\n    seen=set()\n    for value in values:\n        key=\" \".join(value.lower().split())\n        if key and key not in seen:\n            seen.add(key)\n            result.append(key)\n    return result",
+      "solutionExplanation": "Parse and validate before calling string methods, then normalize before deduplicating. Use a set for normalized values already emitted and a list for stable output order. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Normalize and deduplicate",
+          "code": "assert ingest_titles('[\" AI \",\"ai\",\"PyThOn\"]') == [\"ai\",\"python\"]",
+          "explanation": "Identity is based on normalized text."
+        },
+        {
+          "name": "Case 2: Blank and empty",
+          "code": "assert ingest_titles('[\" \",\"\", \"x\"]')==[\"x\"] and ingest_titles(\"[]\")==[]",
+          "explanation": "Blank records must not become searchable titles."
+        },
+        {
+          "name": "Case 3: Reject invalid",
+          "code": "for raw in [\"null\", \"[3]\", \"{bad\"]:\n    try:\n        ingest_titles(raw)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid export accepted\")",
+          "explanation": "Bad input must fail explicitly."
+        }
+      ],
+      "hints": [
+        "Parse and validate before calling string methods, then normalize before deduplicating.",
+        "Use a set for normalized values already emitted and a list for stable output order."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Deduplicating raw strings before normalization.",
+      "Treating a malformed export as an empty valid export."
+    ],
+    "xp": 50,
+    "tags": [
+      "json",
+      "strings",
+      "sets",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "python-typing",
+    "module": "python",
+    "section": "Reliable Python",
+    "title": "Type hints document the interface",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-checkpoint-ingest"
+    ],
+    "objectives": [
+      "Explain type hints document the interface using a concrete Python example.",
+      "Implement and test type hints automatically reject invalid json at runtime.."
+    ],
+    "explanation": "Type hints describe expected types for readers and static analysis tools. A signature such as def total(values: list[int]) -> int communicates the input collection and return type without changing Python’s ordinary runtime behavior. An annotation does not validate data arriving from JSON or prevent a caller from passing a wrong type. Runtime checks and static checks solve different problems.\n\nUse precise, readable hints at the boundaries between pipeline stages. A union such as str | None expresses an optional value explicitly, while dict[str, int] describes the types of keys and values. Type aliases can name repeated structures, but a dictionary hint alone does not specify which keys are required. Start with honest annotations that match the implementation. A function annotated to return a list should not return None on one branch unless the annotation includes that possibility.",
+    "why": "Python AI projects connect many libraries with different data representations. Honest type hints make those boundaries easier to inspect and let editors catch mistakes before execution, while explicit runtime validation remains necessary for model outputs and external documents.",
+    "example": {
+      "code": "def title_or_none(record: dict[str, str]) -> str | None:\n    title = record.get(\"title\", \"\").strip()\n    return title if title else None\n\nprint(title_or_none({\"title\": \"  Guide  \"}))",
+      "explanation": "The return annotation includes None because a missing or blank title follows that branch. The dictionary annotation tells readers that keys and values are strings, but it does not guarantee a title key exists. get supplies that missing-key policy. Static tools can use these annotations; Python itself still executes the body normally without enforcing them."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Type hints automatically reject invalid JSON at runtime.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Type hints describe the interface; implement the behavior with ordinary Python."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement word_counts(texts: list[str]) -> list[int]. Return the whitespace-separated word count for each string, preserving input order. Blank strings count as zero.",
+      "starter": "def word_counts(texts: list[str]) -> list[int]:\n    pass",
+      "solution": "def word_counts(texts: list[str]) -> list[int]:\n    return [len(text.split()) for text in texts]",
+      "solutionExplanation": "Type hints describe the interface; implement the behavior with ordinary Python. Build a list of len(text.split()) for each input string, including blank strings. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Multiple",
+          "code": "assert word_counts([\"hello world\",\"AI\"]) == [2,1]",
+          "explanation": "The output contains one count per input string."
+        },
+        {
+          "name": "Case 2: Whitespace",
+          "code": "assert word_counts([\" \",\"a\\tb\\nc\"]) == [0,3]",
+          "explanation": "split handles tabs and newlines."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert word_counts([]) == []",
+          "explanation": "An empty batch returns an empty count list."
+        }
+      ],
+      "hints": [
+        "Type hints describe the interface; implement the behavior with ordinary Python.",
+        "Build a list of len(text.split()) for each input string, including blank strings."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Assuming annotations perform runtime schema validation.",
+      "Dropping blank inputs and changing the alignment of the output list."
+    ],
+    "xp": 20,
+    "tags": [
+      "type-hints",
+      "interfaces"
+    ]
+  },
+  {
+    "id": "python-classes",
+    "module": "python",
+    "section": "Reliable Python",
+    "title": "Classes keep related state and behavior together",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-typing"
+    ],
+    "objectives": [
+      "Explain classes keep related state and behavior together using a concrete Python example.",
+      "Implement and test where should a per-instance mutable list usually be created."
+    ],
+    "explanation": "A class defines a kind of object with related state and methods. __init__ initializes a new instance, and self refers to that instance inside its methods. Attributes assigned on self belong to the individual object. A mutable attribute assigned in the class body is shared by instances, which is often wrong for per-request or per-document state.\n\nUse a class when identity or evolving state helps express the problem, rather than wrapping every pure function in one. A document object can hold text and expose a derived word count without storing a second value that might become stale. Methods should make mutation obvious. For a collector of messages, adding an item changes the instance, while asking for a count only reads state. Tests should create two instances to detect accidental sharing that a single-instance test would miss.",
+    "why": "AI systems use stateful clients, document objects, and caches. Correct instance ownership prevents one request’s messages from appearing in another request, and deriving simple values from current state avoids inconsistent duplicate fields that can drift apart during updates.",
+    "example": {
+      "code": "class Document:\n    def __init__(self, text):\n        self.text = text  # Instance-owned state.\n\n    def word_count(self):\n        return len(self.text.split())\n\nprint(Document(\"Python for AI\").word_count())",
+      "explanation": "The constructor records the supplied text on a particular instance. word_count derives its result from that instance’s current text, so it does not require a separate stored count. self is passed automatically when a bound method is called. The exercise uses a mutable list, making correct per-instance allocation especially important."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Where should a per-instance mutable list usually be created?",
+      "options": [
+        "Inside __init__ on self",
+        "Once in the class body",
+        "As a global variable"
+      ],
+      "answer": "Inside __init__ on self",
+      "explanation": "Create self.messages = [] inside __init__ so every instance receives its own list."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement MessageBuffer. Each new instance owns an empty messages list. add(text) appends a string. count() returns its number of messages. Instances must remain independent.",
+      "starter": "class MessageBuffer:\n    def __init__(self):\n        pass\n\n    def add(self, text):\n        pass\n\n    def count(self):\n        pass",
+      "solution": "class MessageBuffer:\n    def __init__(self):\n        self.messages = []\n\n    def add(self, text):\n        self.messages.append(text)\n\n    def count(self):\n        return len(self.messages)",
+      "solutionExplanation": "Create self.messages = [] inside __init__ so every instance receives its own list. add appends to that list; count returns len(self.messages) without changing it. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Add",
+          "code": "b=MessageBuffer(); b.add(\"hello\"); b.add(\"AI\"); assert b.count()==2",
+          "explanation": "Count the messages added to this instance."
+        },
+        {
+          "name": "Case 2: Independent",
+          "code": "a=MessageBuffer(); b=MessageBuffer(); a.add(\"x\"); assert b.count()==0",
+          "explanation": "Two buffers must not share the list."
+        },
+        {
+          "name": "Case 3: Empty",
+          "code": "assert MessageBuffer().count()==0",
+          "explanation": "A new instance has no messages."
+        }
+      ],
+      "hints": [
+        "Create self.messages = [] inside __init__ so every instance receives its own list.",
+        "add appends to that list; count returns len(self.messages) without changing it."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Declaring messages=[] in the class body and sharing it.",
+      "Forgetting self in a method signature."
+    ],
+    "xp": 20,
+    "tags": [
+      "classes",
+      "objects",
+      "state"
+    ]
+  },
+  {
+    "id": "python-environments",
+    "module": "python",
+    "section": "Reliable Python",
+    "title": "Virtual environments and dependency contracts",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-classes"
+    ],
+    "objectives": [
+      "Explain virtual environments and dependency contracts using a concrete Python example.",
+      "Implement and test which directory should normally be excluded from git."
+    ],
+    "explanation": "A virtual environment isolates a project’s installed Python packages from other projects. On a local computer, python -m venv .venv creates one, and invoking its Python with -m pip installs packages for that interpreter. Activation changes the shell’s path for convenience; it is not a deployment artifact. Commit dependency declarations, not the environment directory, so another machine can recreate the installation.\n\nA requirements file can pin exact versions, while pyproject.toml can declare a package and its dependency constraints. A lock file records a resolved set for reproducibility. Pinning does not eliminate security or compatibility maintenance: updates still need tests. Browser Pyodide has its own package environment and cannot install every native package. This exercise validates a deliberately small dependency-line format; it does not pretend to implement the full Python packaging specification.",
+    "why": "AI libraries depend on compiled numerical packages and rapidly changing APIs. Isolated, reproducible dependencies keep a working model pipeline from breaking when an unrelated project upgrades a library, and explicit runtime limits help learners move unsupported exercises into a local environment.",
+    "example": {
+      "code": "# Local shell commands, shown as data rather than executed:\ncommands = [\n    \"python -m venv .venv\",\n    \".venv/bin/python -m pip install numpy==2.1.3\",\n]\nfor command in commands:\n    print(command)\n# On Windows, the interpreter is .venv\\Scripts\\python.exe.",
+      "explanation": "The commands are strings in this browser example, so no local environment is created. The first command allocates an isolated interpreter environment; the second explicitly uses that interpreter to install a pinned package. Using python -m pip ties installation to the chosen Python. The exercise focuses on checking a simple dependency contract before a deployment step."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which directory should normally be excluded from Git?",
+      "options": [
+        ".venv/",
+        "src/",
+        "tests/"
+      ],
+      "answer": ".venv/",
+      "explanation": "Skip comments and blanks, then split on == and validate both parts."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement pinned_requirements(lines) for a simplified format. Ignore blank lines and full-line # comments. Accept name==version with nonempty stripped parts; reject any other line with ValueError. Return a name-to-version dictionary; later duplicates win. This is not a complete requirements parser.",
+      "starter": "def pinned_requirements(lines):\n    pass",
+      "solution": "def pinned_requirements(lines):\n    result = {}\n    for line in lines:\n        line = line.strip()\n        if not line or line.startswith(\"#\"):\n            continue\n        parts = line.split(\"==\")\n        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():\n            raise ValueError(\"Expected name==version\")\n        result[parts[0].strip()] = parts[1].strip()\n    return result",
+      "solutionExplanation": "Skip comments and blanks, then split on == and validate both parts. Do not treat arbitrary requirements syntax as supported: reject lines outside the stated simplified format. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Pinned",
+          "code": "assert pinned_requirements([\"numpy==2.1.3\", \"pytest == 8.3.4\"])=={\"numpy\":\"2.1.3\",\"pytest\":\"8.3.4\"}",
+          "explanation": "Strip spaces around the two fields."
+        },
+        {
+          "name": "Case 2: Comments",
+          "code": "assert pinned_requirements([\"\", \" # note\", \"  \"]) == {}",
+          "explanation": "Comments and blanks do not declare dependencies."
+        },
+        {
+          "name": "Case 3: Reject unpinned",
+          "code": "for line in [\"numpy\", \"numpy>=2\", \"numpy==\", \"a==b==c\"]:\n    try:\n        pinned_requirements([line])\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid dependency accepted\")",
+          "explanation": "The simplified contract requires exactly one separator and two fields."
+        }
+      ],
+      "hints": [
+        "Skip comments and blanks, then split on == and validate both parts.",
+        "Do not treat arbitrary requirements syntax as supported: reject lines outside the stated simplified format."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Committing .venv instead of declarations.",
+      "Confusing a demonstration parser with a complete packaging standard implementation."
+    ],
+    "xp": 20,
+    "tags": [
+      "dependencies",
+      "virtual-environments"
+    ]
+  },
+  {
+    "id": "python-clean-code",
+    "module": "python",
+    "section": "Reliable Python",
+    "title": "Clean functions and explicit contracts",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-environments"
+    ],
+    "objectives": [
+      "Explain clean functions and explicit contracts using a concrete Python example.",
+      "Implement and test which comment adds useful reasoning."
+    ],
+    "explanation": "Maintainable code makes its assumptions easy to find. A function name should describe a useful operation, and its parameters should expose what it needs instead of reaching into mutable global state. Keep validation at a clear boundary and separate it from transformation. Small helpers are useful when they name a concept; splitting every expression into another function can make the flow harder to follow.\n\nFor a document summary, decide the exact rules before implementation: count words, keep the original identifier, and avoid changing the record. A fresh dictionary makes the output independent at the outer level, but nested objects would still need deliberate handling if they were included. Docstrings explain contracts and edge cases; comments explain reasoning that is not obvious from the code. Tests then serve as executable examples of those same promises.",
+    "why": "AI pipelines often grow from short notebooks into shared services. Functions with explicit inputs and stable outputs are easier to test, reuse, and review than code that mixes parsing, model calls, mutation, and printing in one large operation.",
+    "example": {
+      "code": "def has_content(text):\n    \"\"\"Return whether a string contains a non-whitespace character.\"\"\"\n    return bool(text.strip())\n\nrecords = [\"\", \"  \", \"useful text\"]\nprint([text for text in records if has_content(text)])",
+      "explanation": "The helper gives a domain meaning to a small expression: content means more than having a nonzero raw length. Its docstring states that contract precisely. The comprehension then reads as a filtering policy rather than an implementation puzzle. The exercise follows the same principle by creating a compact summary with a clearly defined word-count rule."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which comment adds useful reasoning?",
+      "options": [
+        "# Add one to x",
+        "# Preserve original text for citation offsets",
+        "# This is a loop"
+      ],
+      "answer": "# Preserve original text for citation offsets",
+      "explanation": "Construct a new dictionary with only the fields promised by the function contract."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement summarize_document(record). Input has id and text keys. Return a fresh dictionary with exactly id and word_count, counting words via whitespace splitting. Keep the input unchanged.",
+      "starter": "def summarize_document(record):\n    \"\"\"Return id and whitespace-separated word_count without mutating record.\"\"\"\n    pass",
+      "solution": "def summarize_document(record):\n    \"\"\"Return id and whitespace-separated word_count without mutating record.\"\"\"\n    return {\"id\": record[\"id\"], \"word_count\": len(record[\"text\"].split())}",
+      "solutionExplanation": "Construct a new dictionary with only the fields promised by the function contract. Use len(record[\"text\"].split()) and leave record itself untouched. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Summary",
+          "code": "assert summarize_document({\"id\":\"a\",\"text\":\"one two\"}) == {\"id\":\"a\",\"word_count\":2}",
+          "explanation": "The output has only the documented fields."
+        },
+        {
+          "name": "Case 2: Nonmutation",
+          "code": "r={\"id\":\"x\",\"text\":\" a \",\"extra\":7}; summarize_document(r); assert r=={\"id\":\"x\",\"text\":\" a \",\"extra\":7}",
+          "explanation": "Transformation must not delete or overwrite input fields."
+        },
+        {
+          "name": "Case 3: Blank",
+          "code": "assert summarize_document({\"id\":\"z\",\"text\":\" \\n\"})[\"word_count\"]==0",
+          "explanation": "Whitespace-only content has zero words."
+        }
+      ],
+      "hints": [
+        "Construct a new dictionary with only the fields promised by the function contract.",
+        "Use len(record[\"text\"].split()) and leave record itself untouched."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Mutating the input to remove unused keys.",
+      "Writing comments that merely repeat syntax instead of explaining policy."
+    ],
+    "xp": 20,
+    "tags": [
+      "clean-code",
+      "contracts"
+    ]
+  },
+  {
+    "id": "python-testing",
+    "module": "python",
+    "section": "Reliable Python",
+    "title": "Test behavior with pytest-style assertions",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "python-clean-code"
+    ],
+    "objectives": [
+      "Explain test behavior with pytest-style assertions using a concrete Python example.",
+      "Implement and test which test most directly exposes division by zero in an average."
+    ],
+    "explanation": "A useful test states a behavior that matters to callers. pytest discovers functions whose names begin with test_ and reports assertion failures with contextual detail. An assert compares an actual result with an expectation; it should fail when the implementation violates the contract. Testing only the same input as a worked example gives weak evidence, because an incorrect hardcoded implementation could pass.\n\nChoose ordinary, boundary, and empty cases. For floating-point calculations, compare with a tolerance instead of assuming every decimal is exactly representable. pytest offers parametrization to reuse a test over many cases and raises to check exceptions. The browser exercises execute ordinary Python assertions without requiring pytest itself. This lesson asks you to repair a buggy function and use the supplied cases to reason about why the fix handles both ordinary and unusual inputs.",
+    "why": "AI outputs may be probabilistic, but preprocessing, batching, and metric calculations have deterministic contracts worth testing. Focused tests catch regressions before an expensive training or evaluation run and make later refactoring safer than manually inspecting a few printed examples.",
+    "example": {
+      "code": "def clamp_probability(value):\n    return max(0.0, min(1.0, value))\n\ndef test_boundaries():\n    assert clamp_probability(-0.2) == 0.0\n    assert clamp_probability(0.4) == 0.4\n    assert clamp_probability(1.2) == 1.0\n\ntest_boundaries()  # Plain assertions also run without pytest.",
+      "explanation": "The test covers a value below the allowed interval, one inside it, and one above it. It verifies the public behavior rather than checking whether the implementation used min or max. Running the function manually executes the same assertions; a local pytest runner would discover it by name and present a more detailed report."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which test most directly exposes division by zero in an average?",
+      "options": [
+        "A list of ten values",
+        "An empty list",
+        "A list of identical nonzero values"
+      ],
+      "answer": "An empty list",
+      "explanation": "An empty or zero-boundary case often reveals behavior that an ordinary example misses."
+    },
+    "exercise": {
+      "type": "bug",
+      "prompt": "Fix safe_ratio(numerator, denominator). Return numerator / denominator normally and 0.0 when denominator is zero. Negative inputs remain valid; do not clamp the result.",
+      "starter": "def safe_ratio(numerator, denominator):\n    # Bug: denominator zero is not handled.\n    return numerator / denominator",
+      "solution": "def safe_ratio(numerator, denominator):\n    if denominator == 0:\n        return 0.0\n    return numerator / denominator",
+      "solutionExplanation": "An empty or zero-boundary case often reveals behavior that an ordinary example misses. Check denominator == 0 before division; preserve every other input’s ordinary arithmetic result. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Ordinary",
+          "code": "assert abs(safe_ratio(2,3)-2/3)<1e-12",
+          "explanation": "Normal division must remain accurate."
+        },
+        {
+          "name": "Case 2: Zero denominator",
+          "code": "assert safe_ratio(5,0)==0.0 and safe_ratio(0,0)==0.0",
+          "explanation": "The documented fallback must prevent division by zero."
+        },
+        {
+          "name": "Case 3: Negative",
+          "code": "assert safe_ratio(-4,2)==-2",
+          "explanation": "Do not add an unrelated probability-clamping policy."
+        }
+      ],
+      "hints": [
+        "An empty or zero-boundary case often reveals behavior that an ordinary example misses.",
+        "Check denominator == 0 before division; preserve every other input’s ordinary arithmetic result."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path.",
+      "Changing behavior beyond the stated contract while fixing one bug."
+    ],
+    "xp": 20,
+    "tags": [
+      "pytest",
+      "testing",
+      "debugging"
+    ]
+  },
+  {
+    "id": "python-checkpoint-reliability",
+    "module": "python",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: validate a processing configuration",
+    "minutes": 10,
+    "difficulty": "Developing",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "python-testing"
+    ],
+    "objectives": [
+      "Explain checkpoint: validate a processing configuration using a concrete Python example.",
+      "Implement and test why is type(true) is int false."
+    ],
+    "explanation": "Reliable components expose explicit configuration instead of burying assumptions in code. This checkpoint combines dictionaries, type-related validation, clean output construction, and error contracts. The input configuration contains a positive batch size and an optional model name. A validated result must be fresh so that a caller cannot accidentally modify shared defaults by editing it.\n\nPython booleans are a special case: bool is a subclass of int, so isinstance(True, int) is true. When a configuration requires an actual integer count, type(value) is int expresses that stricter rule. Validate the required value first, then construct the normalized result. Empty strings are not meaningful model names here. Tests should cover correct input, missing optional values, and invalid boundary values rather than only the example configuration.",
+    "why": "Configuration mistakes can multiply inference cost or make a service fail under load. Validating batch size and model selection once at startup gives actionable errors early, while returning fresh data prevents accidental mutation from changing future requests.",
+    "example": {
+      "code": "print(isinstance(True, int))  # True: bool subclasses int.\nprint(type(True) is int)      # False: exact-type check.\nconfig = {\"batch_size\": 4}\nmodel = config.get(\"model\", \"small\")\nprint(model)",
+      "explanation": "The first two lines explain why an ordinary integer check may admit a boolean flag where a numeric count was expected. The dictionary lookup demonstrates an optional default without mutating the input. The checkpoint combines those ideas with positivity and nonblank-string validation, then returns only the supported normalized fields for the downstream pipeline."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why is type(True) is int false?",
+      "options": [
+        "True is a string",
+        "Its exact type is bool",
+        "True has no type"
+      ],
+      "answer": "Its exact type is bool",
+      "explanation": "Use an exact integer type check when booleans are not meaningful counts."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement validate_config(config). Require batch_size to have exact type int and be > 0. model defaults to \"small\" and must be a nonblank string. Return only batch_size and stripped model in a fresh dictionary; invalid values raise ValueError.",
+      "starter": "def validate_config(config):\n    pass",
+      "solution": "def validate_config(config):\n    size = config.get(\"batch_size\")\n    model = config.get(\"model\", \"small\")\n    if type(size) is not int or size <= 0:\n        raise ValueError(\"batch_size must be a positive integer\")\n    if not isinstance(model,str) or not model.strip():\n        raise ValueError(\"model must be nonblank text\")\n    return {\"batch_size\":size, \"model\":model.strip()}",
+      "solutionExplanation": "Use an exact integer type check when booleans are not meaningful counts. Read optional values with get, validate both fields, then return a new normalized dictionary. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Defaults",
+          "code": "assert validate_config({\"batch_size\":4})=={\"batch_size\":4,\"model\":\"small\"}",
+          "explanation": "The optional model has a documented default."
+        },
+        {
+          "name": "Case 2: Normalize",
+          "code": "r={\"batch_size\":2,\"model\":\" large \",\"extra\":1}; assert validate_config(r)=={\"batch_size\":2,\"model\":\"large\"} and r[\"model\"]==\" large \"",
+          "explanation": "Normalize output without mutating input."
+        },
+        {
+          "name": "Case 3: Invalid",
+          "code": "for c in [{},{\"batch_size\":0},{\"batch_size\":True},{\"batch_size\":2,\"model\":\" \"}]:\n    try:\n        validate_config(c)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid config accepted\")",
+          "explanation": "Reject missing, nonpositive, boolean, and blank values."
+        }
+      ],
+      "hints": [
+        "Use an exact integer type check when booleans are not meaningful counts.",
+        "Read optional values with get, validate both fields, then return a new normalized dictionary."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Accepting True as a batch size unintentionally.",
+      "Adding defaults directly to a shared configuration dictionary."
+    ],
+    "xp": 50,
+    "tags": [
+      "validation",
+      "typing",
+      "testing",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "python-project-parse",
+    "module": "python",
+    "section": "Document pipeline project",
+    "title": "Document pipeline · 1. Validate the export",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "python-checkpoint-reliability"
+    ],
+    "objectives": [
+      "Explain document pipeline · 1. validate the export using a concrete Python example.",
+      "Implement and test why preserve text unchanged in the parsing milestone."
+    ],
+    "explanation": "A document-processing pipeline starts with a trustworthy input boundary. The project accepts a JSON array of records, each with a nonblank string id and a string text. Validate every record before returning any of them. This gives the caller an all-or-error contract: a malformed export does not silently produce a partial corpus that appears complete. Extra input fields are ignored in the normalized output.\n\nKeep parsing and record validation in one small function for this first milestone. Strip surrounding whitespace from identifiers because it is not meaningful identity in this project, but retain the original text exactly. Text cleanup belongs to the next stage, where its policy can be tested separately. Construct fresh dictionaries instead of returning the original mappings, so the stage’s supported output shape is clear and independent from extra source metadata.",
+    "why": "A retrieval or classification corpus needs stable document IDs and known text types. Validating the entire export at ingestion prevents confusing failures later during embedding and keeps raw text available for deliberate normalization and traceable source references.",
+    "example": {
+      "code": "import json\nexport = '[{\"id\":\" guide \",\"text\":\"Hello  world\",\"source\":\"demo\"}]'\nrecords = json.loads(export)\nrecord = records[0]\nprint(record[\"id\"].strip(), repr(record[\"text\"]))\n# Identity cleanup and text cleanup are separate policies.",
+      "explanation": "The example parses one record and strips its identifier while preserving the text’s double space. This separation matters because source text may be used for citations or display later. The project function adds complete shape validation and copies only the supported fields. It must reject the whole export when any record violates the required contract."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why preserve text unchanged in the parsing milestone?",
+      "options": [
+        "Cleanup is a separate explicit stage",
+        "JSON cannot contain spaces",
+        "Strings are mutable"
+      ],
+      "answer": "Cleanup is a separate explicit stage",
+      "explanation": "Validate the top-level list, then each record’s id and text before appending output."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Build parse_documents(raw). Parse a JSON list of objects with nonblank string id and string text. Return fresh dictionaries containing only stripped id and unchanged text. Invalid JSON or shape raises ValueError; [] is valid.",
+      "starter": "import json\n\ndef parse_documents(raw):\n    pass",
+      "solution": "import json\n\ndef parse_documents(raw):\n    records=json.loads(raw)\n    if not isinstance(records,list):\n        raise ValueError(\"Expected a list\")\n    result=[]\n    for record in records:\n        if not isinstance(record,dict):\n            raise ValueError(\"Expected document objects\")\n        identifier=record.get(\"id\")\n        text=record.get(\"text\")\n        if not isinstance(identifier,str) or not identifier.strip() or not isinstance(text,str):\n            raise ValueError(\"Invalid document\")\n        result.append({\"id\":identifier.strip(),\"text\":text})\n    return result",
+      "solutionExplanation": "Validate the top-level list, then each record’s id and text before appending output. Use a new {\"id\": identifier.strip(), \"text\": text} dictionary so unsupported metadata does not leak into the pipeline contract. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Parse",
+          "code": "assert parse_documents('[{\"id\":\" a \",\"text\":\"A  B\",\"extra\":1}]')==[{\"id\":\"a\",\"text\":\"A  B\"}]",
+          "explanation": "Preserve raw text and normalize only the identifier."
+        },
+        {
+          "name": "Case 2: Empty",
+          "code": "assert parse_documents(\"[]\")==[]",
+          "explanation": "An empty export is valid."
+        },
+        {
+          "name": "Case 3: Validate all",
+          "code": "for raw in [\"{}\",'[{\"id\":\"\",\"text\":\"x\"}]','[{\"id\":\"a\",\"text\":3}]',\"[1]\"]:\n    try:\n        parse_documents(raw)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid document accepted\")",
+          "explanation": "Each record must satisfy the same schema."
+        }
+      ],
+      "hints": [
+        "Validate the top-level list, then each record’s id and text before appending output.",
+        "Use a new {\"id\": identifier.strip(), \"text\": text} dictionary so unsupported metadata does not leak into the pipeline contract."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Returning partially valid data after a bad record.",
+      "Normalizing text before the text-cleanup policy has been chosen."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "json",
+      "validation"
+    ],
+    "project": {
+      "id": "python-capstone",
+      "title": "Document-processing pipeline",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "python-project-clean",
+    "module": "python",
+    "section": "Document pipeline project",
+    "title": "Document pipeline · 2. Clean and deduplicate",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "python-project-parse"
+    ],
+    "objectives": [
+      "Explain document pipeline · 2. clean and deduplicate using a concrete Python example.",
+      "Implement and test when should an id enter the seen set."
+    ],
+    "explanation": "The second stage receives validated document dictionaries from the parser. It normalizes whitespace in text, drops documents whose normalized text is empty, and keeps the first nonempty document for each identifier. Preserving case keeps the cleaned output useful for display. This policy deliberately differs from the earlier lowercase search-key exercise because display text and search keys serve different purposes.\n\nA blank document does not reserve its identifier. If a later record with the same ID contains useful text, that later record should survive. As in the prediction checkpoint, update the membership set only after deciding to accept a record. Return fresh dictionaries to keep stage boundaries independent. This milestone should be tested separately from parsing so that a normalization failure can be diagnosed without involving JSON syntax or schema validation at the same time.",
+    "why": "Clean, deduplicated documents reduce repeated embedding work and empty search results. Keeping display case and a stable first-useful-document policy makes the output suitable for both downstream indexing and an interface that needs to show readable source passages.",
+    "example": {
+      "code": "texts = [\"  A\\n guide  \", \"  \", \"Python\"]\nfor text in texts:\n    cleaned = \" \".join(text.split())\n    print(repr(cleaned), bool(cleaned))\n# Normalization reveals which records contain useful content.",
+      "explanation": "The example demonstrates whitespace normalization without lowercasing. The blank source becomes an empty string, making an explicit keep-or-drop decision easy. A useful document retains its capital letters and receives single spaces between words. The project adds identifier-based deduplication and fresh dictionaries while assuming the earlier parser already checked the field types."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When should an ID enter the seen set?",
+      "options": [
+        "Before checking content",
+        "After accepting a nonempty document",
+        "Only at the very end"
+      ],
+      "answer": "After accepting a nonempty document",
+      "explanation": "Normalize whitespace first, then test both nonempty text and unseen identity."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement clean_documents(records) for validated {id,text} records. Preserve text case, normalize whitespace, remove blank documents, and keep the first nonblank record per ID. Return fresh dictionaries in accepted order.",
+      "starter": "def clean_documents(records):\n    # records already passed parse_documents.\n    pass",
+      "solution": "def clean_documents(records):\n    result=[]\n    seen=set()\n    for record in records:\n        text=\" \".join(record[\"text\"].split())\n        identifier=record[\"id\"]\n        if text and identifier not in seen:\n            seen.add(identifier)\n            result.append({\"id\":identifier,\"text\":text})\n    return result",
+      "solutionExplanation": "Normalize whitespace first, then test both nonempty text and unseen identity. Only add the identifier to seen inside the branch that appends a new cleaned dictionary. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Normalize",
+          "code": "assert clean_documents([{\"id\":\"a\",\"text\":\" A\\n B \"}])==[{\"id\":\"a\",\"text\":\"A B\"}]",
+          "explanation": "Normalize spacing while preserving case."
+        },
+        {
+          "name": "Case 2: First useful",
+          "code": "assert clean_documents([{\"id\":\"a\",\"text\":\" \"},{\"id\":\"a\",\"text\":\"Good\"},{\"id\":\"a\",\"text\":\"Later\"}])==[{\"id\":\"a\",\"text\":\"Good\"}]",
+          "explanation": "A blank earlier record must not block useful text."
+        },
+        {
+          "name": "Case 3: Nonmutation",
+          "code": "r=[{\"id\":\"x\",\"text\":\" A \"}]; out=clean_documents(r); out[0][\"text\"]=\"changed\"; assert r[0][\"text\"]==\" A \" and clean_documents([])==[]",
+          "explanation": "Output records must be independent of input dictionaries."
+        }
+      ],
+      "hints": [
+        "Normalize whitespace first, then test both nonempty text and unseen identity.",
+        "Only add the identifier to seen inside the branch that appends a new cleaned dictionary."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Deduplicating before dropping blank content.",
+      "Lowercasing text despite the case-preservation contract."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "text-normalization",
+      "deduplication"
+    ],
+    "project": {
+      "id": "python-capstone",
+      "title": "Document-processing pipeline",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "python-project-report",
+    "module": "python",
+    "section": "Document pipeline project",
+    "title": "Document pipeline · 3. Compose a tested report",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "python-project-clean"
+    ],
+    "objectives": [
+      "Explain document pipeline · 3. compose a tested report using a concrete Python example.",
+      "Implement and test order the complete document pipeline.."
+    ],
+    "explanation": "The final stage composes the validated parser and the pure cleaner, then creates a JSON report. Composition means passing one function’s output into the next instead of repeating its internal logic. The report includes cleaned documents, each with a word count, and totals for the number of accepted documents and all words. Empty valid input produces an empty report, while invalid input still raises the parser’s ValueError.\n\nUse the supplied earlier helpers as stable building blocks. Add derived fields in new dictionaries and serialize the report with json.dumps. JSON key ordering is not part of the contract, so tests should parse the returned JSON before comparing structures. This is a complete small pipeline with a clear boundary and deterministic behavior. A production version could add file uploads, logging, and richer schema validation without changing the reasoning behind these stages.",
+    "why": "Composing tested stages yields a useful document-processing tool that can feed search indexing or classification. A structured report makes processing outcomes inspectable and gives later evaluation code reliable counts without depending on printed output or undocumented side effects.",
+    "example": {
+      "code": "import json\ncleaned = [{\"id\":\"a\", \"text\":\"Python for AI\"}]\ncounts = [len(record[\"text\"].split()) for record in cleaned]\nreport = {\"document_count\": len(cleaned), \"total_words\": sum(counts)}\nprint(json.dumps(report))",
+      "explanation": "The example derives counts from already-cleaned documents and serializes a small summary. It does not repeat parsing or cleaning. The final project extends this report with the per-document word_count fields and wires the earlier helpers together. Parsing the returned JSON in tests checks the data contract without making irrelevant assumptions about spaces or key order in the serialization."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the complete document pipeline.",
+      "options": [
+        "Serialize report",
+        "Clean documents",
+        "Parse and validate"
+      ],
+      "answer": [
+        "Parse and validate",
+        "Clean documents",
+        "Serialize report"
+      ],
+      "explanation": "Reuse parse_documents and clean_documents, then derive per-document word counts from their result."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement process_export(raw) using the supplied helpers. Return a JSON string with documents (cleaned records plus word_count), document_count, and total_words. Preserve validation failures. Count words using split().",
+      "starter": "import json\n\ndef parse_documents(raw):\n    records=json.loads(raw)\n    if not isinstance(records,list):\n        raise ValueError(\"Expected a list\")\n    result=[]\n    for record in records:\n        if not isinstance(record,dict):\n            raise ValueError(\"Expected document objects\")\n        identifier=record.get(\"id\")\n        text=record.get(\"text\")\n        if not isinstance(identifier,str) or not identifier.strip() or not isinstance(text,str):\n            raise ValueError(\"Invalid document\")\n        result.append({\"id\":identifier.strip(),\"text\":text})\n    return result\n\ndef clean_documents(records):\n    result=[]\n    seen=set()\n    for record in records:\n        text=\" \".join(record[\"text\"].split())\n        identifier=record[\"id\"]\n        if text and identifier not in seen:\n            seen.add(identifier)\n            result.append({\"id\":identifier,\"text\":text})\n    return result\n\ndef process_export(raw):\n    pass",
+      "solution": "import json\n\ndef parse_documents(raw):\n    records=json.loads(raw)\n    if not isinstance(records,list):\n        raise ValueError(\"Expected a list\")\n    result=[]\n    for record in records:\n        if not isinstance(record,dict):\n            raise ValueError(\"Expected document objects\")\n        identifier=record.get(\"id\")\n        text=record.get(\"text\")\n        if not isinstance(identifier,str) or not identifier.strip() or not isinstance(text,str):\n            raise ValueError(\"Invalid document\")\n        result.append({\"id\":identifier.strip(),\"text\":text})\n    return result\n\ndef clean_documents(records):\n    result=[]\n    seen=set()\n    for record in records:\n        text=\" \".join(record[\"text\"].split())\n        identifier=record[\"id\"]\n        if text and identifier not in seen:\n            seen.add(identifier)\n            result.append({\"id\":identifier,\"text\":text})\n    return result\n\ndef process_export(raw):\n    documents=clean_documents(parse_documents(raw))\n    enriched=[{**doc,\"word_count\":len(doc[\"text\"].split())} for doc in documents]\n    return json.dumps({\"documents\":enriched,\"document_count\":len(enriched),\"total_words\":sum(doc[\"word_count\"] for doc in enriched)})",
+      "solutionExplanation": "Reuse parse_documents and clean_documents, then derive per-document word counts from their result. Serialize a dictionary containing the enriched documents and sums; compare parsed JSON in tests. The tests cover the ordinary case, an alternate input, and an edge case so that the function contract remains explicit.",
+      "tests": [
+        {
+          "name": "Case 1: Complete pipeline",
+          "code": "import json\nr=json.loads(process_export('[{\"id\":\"a\",\"text\":\" Hello world \"},{\"id\":\"a\",\"text\":\"duplicate\"},{\"id\":\"b\",\"text\":\"AI\"}]')); assert r=={\"documents\":[{\"id\":\"a\",\"text\":\"Hello world\",\"word_count\":2},{\"id\":\"b\",\"text\":\"AI\",\"word_count\":1}],\"document_count\":2,\"total_words\":3}",
+          "explanation": "Composition must clean, deduplicate, enrich, and summarize."
+        },
+        {
+          "name": "Case 2: Empty report",
+          "code": "import json\nassert json.loads(process_export(\"[]\"))=={\"documents\":[],\"document_count\":0,\"total_words\":0}",
+          "explanation": "A valid empty corpus still has a complete report shape."
+        },
+        {
+          "name": "Case 3: Errors propagate",
+          "code": "try:\n    process_export('[{\"id\":\"a\",\"text\":null}]')\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid export accepted\")",
+          "explanation": "Composition must not hide upstream validation failures."
+        }
+      ],
+      "hints": [
+        "Reuse parse_documents and clean_documents, then derive per-document word counts from their result.",
+        "Serialize a dictionary containing the enriched documents and sums; compare parsed JSON in tests."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Reimplementing earlier stages and introducing different policies.",
+      "Comparing serialized text formatting instead of the JSON data."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "pipeline",
+      "json",
+      "testing"
+    ],
+    "project": {
+      "id": "python-capstone",
+      "title": "Document-processing pipeline",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

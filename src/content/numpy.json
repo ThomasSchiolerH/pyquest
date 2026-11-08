@@ -1,0 +1,1598 @@
+[
+  {
+    "id": "numpy-arrays",
+    "module": "numpy",
+    "section": "Thinking in arrays",
+    "title": "Scalars, vectors, matrices, and array shapes",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain scalars, vectors, matrices, and array shapes by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "A scalar is one number, a vector is an ordered collection of numbers, and a matrix arranges numbers into rows and columns. NumPy represents all of these with ndarray. Its shape is a tuple describing the length of each axis: () for a scalar array, (3,) for a three-element vector, and (2, 3) for a matrix with two rows and three columns. The shape is part of the meaning, not merely a storage detail.\n\nIn an AI feature matrix, a common convention is rows as examples and columns as features. A two-document matrix with three features therefore has shape (2, 3). Use np.asarray(values, dtype=float) to accept array-like input and make numerical division predictable. Check ndim when an operation requires a matrix; a one-dimensional array of three features is not automatically a batch containing one example. Explicit shape contracts prevent many silent numerical mistakes.",
+    "why": "Embeddings, training data, and neural-network activations are arrays whose axes carry meaning. Understanding shape lets you tell the difference between one document’s features and a batch of documents, preventing incorrect reductions or accidental broadcasting in later AI calculations.",
+    "example": {
+      "code": "import numpy as np\nscalar=np.asarray(0.5)\nvector=np.asarray([1,2,3],dtype=float)\nmatrix=np.asarray([[1,2,3],[4,5,6]],dtype=float)\nprint(scalar.shape,vector.shape,matrix.shape)\nprint(matrix.shape[0],\"examples\",matrix.shape[1],\"features\")",
+      "explanation": "The same ndarray type represents values with different numbers of axes. The matrix has two examples and three features because the first axis counts rows and the second counts columns. dtype=float converts integer literals into floating-point data suitable for later normalization. The exercise reads this shape contract and explicitly rejects inputs that do not have two axes."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does shape (4, 6) mean under the rows-as-examples convention?",
+      "options": [
+        "4 examples, 6 features",
+        "6 examples, 4 features",
+        "24 separate axes"
+      ],
+      "answer": "4 examples, 6 features",
+      "explanation": "A (rows, columns) shape describes examples first and features second."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement matrix_dimensions(values). Convert array-like numeric input to a float NumPy array, require exactly two axes, and return its (rows, columns) shape tuple. A matrix with zero rows is valid if its two-dimensional shape is explicit; vectors and scalars raise ValueError.",
+      "starter": "import numpy as np\n\ndef matrix_dimensions(values):\n    pass",
+      "solution": "import numpy as np\n\ndef matrix_dimensions(values):\n    array=np.asarray(values,dtype=float)\n    if array.ndim!=2:\n        raise ValueError(\"Expected a matrix\")\n    return tuple(array.shape)",
+      "solutionExplanation": "A (rows, columns) shape describes examples first and features second. Convert with np.asarray(..., dtype=float), check array.ndim == 2, and return tuple(array.shape). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Matrix",
+          "code": "assert matrix_dimensions([[1,2,3],[4,5,6]])==(2,3)",
+          "explanation": "The first axis is examples and the second is features."
+        },
+        {
+          "name": "Empty shaped matrix",
+          "code": "assert matrix_dimensions(np.empty((0,4)))==(0,4)",
+          "explanation": "Zero examples can retain a known feature count."
+        },
+        {
+          "name": "Reject vector",
+          "code": "for value in [[1,2,3],5]:\n    try:\n        matrix_dimensions(value)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Nonmatrix accepted\")",
+          "explanation": "Do not silently treat a vector as a one-row matrix."
+        }
+      ],
+      "hints": [
+        "A (rows, columns) shape describes examples first and features second.",
+        "Convert with np.asarray(..., dtype=float), check array.ndim == 2, and return tuple(array.shape)."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Treating shape (3,) as equivalent to (1,3).",
+      "Assuming the axis meanings can be inferred without a documented convention."
+    ],
+    "xp": 20,
+    "tags": [
+      "numpy-arrays",
+      "scalars",
+      "vectors",
+      "matrices",
+      "shapes"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "numpy-indexing",
+    "module": "numpy",
+    "section": "Thinking in arrays",
+    "title": "Index and slice the axis you mean",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-arrays"
+    ],
+    "objectives": [
+      "Explain index and slice the axis you mean by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "NumPy indexing selects values along one or more axes. For a matrix X, X[0] selects the first row and X[:, 1] selects the second column across every row. A colon means all values along that axis. A slice start:stop excludes stop, as with Python lists. Integer indexing removes an axis, while a one-element slice preserves it: X[:, 1] is a vector, but X[:, 1:2] is a one-column matrix.\n\nBasic NumPy slices usually share memory with the original array. Changing a slice may therefore change the source, unlike a Python list slice’s new outer container. Use copy when independent storage is part of the contract. Shape-preserving slices are useful when a downstream matrix operation expects two axes even for one feature. Test both the returned shape and the values; checking only the printed numbers can miss a removed axis that later broadcasts incorrectly.",
+    "why": "Feature selection and embedding inspection require precise axis choices. Preserving a single feature as a column matrix helps later matrix operations remain consistent, while copying selected data prevents an exploratory transformation from silently modifying the training or retrieval corpus.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[10,20,30],[40,50,60]])\nprint(X[:,1])       # [20 50], shape (2,)\nprint(X[:,1:2])     # [[20], [50]], shape (2,1)\nindependent=X[:,1:2].copy()\nindependent[0,0]=99\nassert X[0,1]==20",
+      "explanation": "The two selections contain the same numerical values but have different shapes. Integer indexing removes the feature axis; slicing retains it with length one. copy gives the selected column its own storage, so writing 99 does not alter X. The exercise makes both requirements explicit: preserve the column axis and return data independent of the input."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which expression preserves a one-column matrix shape?",
+      "options": [
+        "X[:, 1]",
+        "X[:, 1:2]",
+        "X[1, :]"
+      ],
+      "answer": "X[:, 1:2]",
+      "explanation": "A slice column:column+1 retains a length-one feature axis."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement feature_column(X,column). Require a two-dimensional numeric array and a nonnegative in-range integer column. Return an independent float array of shape (rows,1) containing that feature. Invalid shape or column raises ValueError.",
+      "starter": "import numpy as np\n\ndef feature_column(X, column):\n    pass",
+      "solution": "import numpy as np\n\ndef feature_column(X, column):\n    array=np.asarray(X,dtype=float)\n    if array.ndim!=2 or not 0<=column<array.shape[1]:\n        raise ValueError(\"Invalid matrix or column\")\n    return array[:,column:column+1].copy()",
+      "solutionExplanation": "A slice column:column+1 retains a length-one feature axis. Use array[:, column:column+1].copy() after validating the two-dimensional shape and bounds. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Column shape",
+          "code": "out=feature_column([[1,2],[3,4]],1); assert out.shape==(2,1) and np.array_equal(out,[[2],[4]])",
+          "explanation": "Keep the feature axis even though only one column remains."
+        },
+        {
+          "name": "Independent storage",
+          "code": "X=np.asarray([[1.,2.]]); out=feature_column(X,0); out[0,0]=99; assert X[0,0]==1",
+          "explanation": "The returned array must not alias the source."
+        },
+        {
+          "name": "Invalid and empty rows",
+          "code": "assert feature_column(np.empty((0,2)),1).shape==(0,1)\ntry:\n    feature_column([[1,2]],2)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Out-of-range feature accepted\")",
+          "explanation": "Support known empty shape and reject invalid feature indices."
+        }
+      ],
+      "hints": [
+        "A slice column:column+1 retains a length-one feature axis.",
+        "Use array[:, column:column+1].copy() after validating the two-dimensional shape and bounds."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Selecting X[:,column] and accidentally removing the feature axis.",
+      "Mutating a view while believing it is independent storage."
+    ],
+    "xp": 20,
+    "tags": [
+      "indexing",
+      "slicing",
+      "shapes",
+      "views"
+    ]
+  },
+  {
+    "id": "numpy-broadcasting",
+    "module": "numpy",
+    "section": "Thinking in arrays",
+    "title": "Broadcasting makes feature-wise operations concise",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-indexing"
+    ],
+    "objectives": [
+      "Explain broadcasting makes feature-wise operations concise by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Broadcasting lets NumPy combine arrays with different shapes when their dimensions are compatible. Compare dimensions from the right: two dimensions are compatible when they are equal or either is one. Missing leading dimensions behave as ones. A matrix of shape (examples, features) can therefore subtract a vector of shape (features,), applying the same feature offset to every row without constructing repeated copies.\n\nBroadcasting is powerful because the operation states the intended relationship between axes. It is dangerous when a wrong shape is still technically compatible. A vector of per-example values needs a new trailing axis, such as values[:, None], before combining it with all features of those examples. Write the shapes beside an expression while learning. For centering features, compute column means with axis=0 and subtract that feature vector from every row. This preserves the matrix’s original shape.",
+    "why": "Feature standardization and embedding transformations often apply one statistic per feature across an entire batch. Broadcasting expresses that operation efficiently, but an incorrect axis can produce plausible numbers with the wrong meaning and silently damage a model’s inputs.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[1.,10.],[3.,14.]])\nmeans=X.mean(axis=0)  # [2.,12.], one mean per feature.\ncentered=X-means      # (2,2) minus (2,) broadcasts by row.\nprint(centered)\nprint(centered.mean(axis=0))  # [0.,0.]",
+      "explanation": "axis=0 reduces across rows, leaving one mean for each feature column. Subtracting that vector broadcasts the same offsets across every example. The resulting columns have mean zero because each value was shifted by its own feature’s mean. The exercise accepts caller-provided offsets, making shape validation essential rather than relying on an accidentally compatible array."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which shapes broadcast to a (5, 3) result for feature-wise subtraction?",
+      "options": [
+        "(5,3) and (3,)",
+        "(5,3) and (5,)",
+        "(5,3) and (2,)"
+      ],
+      "answer": "(5,3) and (3,)",
+      "explanation": "Broadcast dimensions are compared from the right, so a feature vector aligns with columns."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement subtract_offsets(X,offsets). X is a matrix and offsets must be a vector with one value per feature column. Return X minus those offsets for every row, without modifying input. Reject wrong dimensions or length with ValueError.",
+      "starter": "import numpy as np\n\ndef subtract_offsets(X, offsets):\n    pass",
+      "solution": "import numpy as np\n\ndef subtract_offsets(X, offsets):\n    array=np.asarray(X,dtype=float)\n    offset=np.asarray(offsets,dtype=float)\n    if array.ndim!=2 or offset.ndim!=1 or offset.shape[0]!=array.shape[1]:\n        raise ValueError(\"Expected one offset per feature\")\n    return array-offset",
+      "solutionExplanation": "Broadcast dimensions are compared from the right, so a feature vector aligns with columns. Require offsets.ndim == 1 and its length equal to X.shape[1], then return array - offset. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Broadcast",
+          "code": "assert np.allclose(subtract_offsets([[1,10],[3,14]],[2,12]),[[-1,-2],[1,2]])",
+          "explanation": "The feature offsets apply to every example."
+        },
+        {
+          "name": "Nonmutation",
+          "code": "X=np.asarray([[2.,4.]]); subtract_offsets(X,[1,2]); assert np.array_equal(X,[[2,4]])",
+          "explanation": "Use a new subtraction result rather than modifying X in place."
+        },
+        {
+          "name": "Shape rejection",
+          "code": "try:\n    subtract_offsets(np.zeros((3,2)),[1,2,3])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Wrong offsets accepted\")",
+          "explanation": "A per-example vector is not a per-feature vector."
+        }
+      ],
+      "hints": [
+        "Broadcast dimensions are compared from the right, so a feature vector aligns with columns.",
+        "Require offsets.ndim == 1 and its length equal to X.shape[1], then return array - offset."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Subtracting per-example statistics without adding the required axis.",
+      "Assuming broadcasting validates the semantic meaning of an axis."
+    ],
+    "xp": 20,
+    "tags": [
+      "broadcasting",
+      "feature-centering",
+      "shapes"
+    ]
+  },
+  {
+    "id": "numpy-vectorization",
+    "module": "numpy",
+    "section": "Thinking in arrays",
+    "title": "Vectorization and reductions over axes",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-broadcasting"
+    ],
+    "objectives": [
+      "Explain vectorization and reductions over axes by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Vectorization expresses work as array operations rather than a Python loop over individual elements. NumPy can run many numerical loops in compiled code, reducing Python overhead. The mathematical operation still happens for every relevant value; vectorization is not a different algorithm or a guarantee that temporary arrays are free. Understand the computation before shortening its syntax.\n\nAn elementwise expression such as (X - target) ** 2 computes a squared difference at each position. A reduction such as mean(axis=1) then combines feature values within each row. The axis argument describes the dimension being reduced, not the dimension being kept. For per-example mean squared error, reduce the feature axis and retain one result per example. Validate matching shapes rather than allowing unintended broadcasting between predictions and targets, since a shape mistake can create a larger pairwise error matrix.",
+    "why": "Model evaluation often computes one error per example before summarizing a dataset. Vectorized reductions make that computation efficient and concise, while explicit shape checks stop an innocent-looking subtraction from comparing every prediction against every target through unintended broadcasting.",
+    "example": {
+      "code": "import numpy as np\npred=np.asarray([[1.,3.],[2.,6.]])\ntruth=np.asarray([[1.,1.],[4.,6.]])\nsquared=(pred-truth)**2\nper_example=squared.mean(axis=1)\nprint(squared)      # [[0.,4.],[4.,0.]]\nprint(per_example)  # [2.,2.]",
+      "explanation": "The elementwise subtraction compares corresponding features because the shapes match. Squaring makes positive and negative errors contribute equally. mean(axis=1) combines the two feature errors in each row, leaving a vector with one result per example. The exercise adds explicit shape validation and an empty-batch policy while rejecting zero-feature rows whose mean would be undefined."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which axis should a (examples, features) matrix reduce for one error per example?",
+      "options": [
+        "axis=0",
+        "axis=1",
+        "No axis"
+      ],
+      "answer": "axis=1",
+      "explanation": "axis=1 reduces the feature dimension and leaves one number per example."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement row_mse(predicted,target). Require matching two-dimensional shapes with at least one feature. Return a vector of mean squared errors across features for each row. A shaped zero-row batch is valid. Reject mismatched shapes or zero features with ValueError.",
+      "starter": "import numpy as np\n\ndef row_mse(predicted, target):\n    pass",
+      "solution": "import numpy as np\n\ndef row_mse(predicted, target):\n    pred=np.asarray(predicted,dtype=float)\n    truth=np.asarray(target,dtype=float)\n    if pred.ndim!=2 or truth.shape!=pred.shape or pred.shape[1]==0:\n        raise ValueError(\"Expected matching matrices with features\")\n    return ((pred-truth)**2).mean(axis=1)",
+      "solutionExplanation": "axis=1 reduces the feature dimension and leaves one number per example. Check exact matrix shapes, then compute ((pred - truth) ** 2).mean(axis=1). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Values",
+          "code": "assert np.allclose(row_mse([[1,3],[2,6]],[[1,1],[4,6]]),[2,2])",
+          "explanation": "Compute a separate mean squared error for each example."
+        },
+        {
+          "name": "Shape and empty",
+          "code": "assert row_mse([[1,2,3]],[[1,2,3]]).shape==(1,) and row_mse(np.empty((0,2)),np.empty((0,2))).shape==(0,)",
+          "explanation": "The output retains the example axis only."
+        },
+        {
+          "name": "Mismatch",
+          "code": "try:\n    row_mse([[1,2]],[[1],[2]])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Unintended broadcasting accepted\")",
+          "explanation": "Matching shapes are required even when NumPy could broadcast."
+        }
+      ],
+      "hints": [
+        "axis=1 reduces the feature dimension and leaves one number per example.",
+        "Check exact matrix shapes, then compute ((pred - truth) ** 2).mean(axis=1)."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Reducing axis=0 and obtaining one error per feature.",
+      "Allowing prediction and target shapes to broadcast into an unintended pairwise matrix."
+    ],
+    "xp": 20,
+    "tags": [
+      "vectorization",
+      "reductions",
+      "mean-squared-error"
+    ]
+  },
+  {
+    "id": "numpy-dot-products",
+    "module": "numpy",
+    "section": "Thinking in arrays",
+    "title": "Dot products combine aligned features",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-vectorization"
+    ],
+    "objectives": [
+      "Explain dot products combine aligned features by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "The dot product of two equal-length vectors multiplies corresponding components and sums the products. For a=[1,2] and b=[3,4], it is 1×3 + 2×4 = 11. In NumPy, a @ b or np.dot(a,b) computes this for one-dimensional vectors. Elementwise a*b is only the intermediate vector of products, not the final scalar sum.\n\nA linear score uses a dot product between input features and learned or chosen weights, then adds a bias. Each weight describes how strongly its corresponding feature contributes under that model. Dot products also measure alignment, but their size depends on vector magnitudes as well as direction; cosine similarity will remove that magnitude effect later. Keep vector lengths equal and reject matrices in a function that promises a single-vector score. Explicit dimensions prevent a scalar contract from unexpectedly returning an array.",
+    "why": "Linear models, neural-network layers, and embedding comparisons all use dot products. Implementing one carefully connects familiar conceptual feature weighting to actual NumPy code and clarifies why unnormalized dot-product ranking can favor large-magnitude vectors rather than only aligned directions.",
+    "example": {
+      "code": "import numpy as np\nfeatures=np.asarray([2.,5.,1.])\nweights=np.asarray([0.5,-0.2,1.0])\ncontributions=features*weights\nscore=features@weights+0.1\nprint(contributions)  # [1.,-1.,1.]\nprint(score)          # 1.1",
+      "explanation": "Each feature contributes its value multiplied by the matching weight. The negative second weight lowers the score, while the final bias shifts the total independently of input features. The elementwise product exposes the individual contributions before the dot product sums them. The exercise requires a scalar result and rejects shapes that would change the meaning of the @ operation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What is the dot product of [1, 2] and [3, 4]?",
+      "options": [
+        "[3, 8]",
+        "11",
+        "21"
+      ],
+      "answer": "11",
+      "explanation": "A dot product sums elementwise products; the intermediate product vector is not the final score."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement linear_score(features,weights,bias=0.0). Require equal-length one-dimensional vectors and return their dot product plus bias as a Python float. Empty matching vectors return bias. Invalid dimensions or unequal lengths raise ValueError.",
+      "starter": "import numpy as np\n\ndef linear_score(features, weights, bias=0.0):\n    pass",
+      "solution": "import numpy as np\n\ndef linear_score(features, weights, bias=0.0):\n    x=np.asarray(features,dtype=float)\n    w=np.asarray(weights,dtype=float)\n    if x.ndim!=1 or w.ndim!=1 or x.shape!=w.shape:\n        raise ValueError(\"Expected equal-length vectors\")\n    return float(x@w+bias)",
+      "solutionExplanation": "A dot product sums elementwise products; the intermediate product vector is not the final score. Validate both arrays are one-dimensional with equal shapes, then return float(x @ w + bias). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Weighted score",
+          "code": "assert abs(linear_score([2,5,1],[0.5,-0.2,1],0.1)-1.1)<1e-12",
+          "explanation": "Multiply corresponding features, sum, then add bias."
+        },
+        {
+          "name": "Empty and type",
+          "code": "assert linear_score([],[],2.5)==2.5 and isinstance(linear_score([1],[2]),float)",
+          "explanation": "An empty dot product is zero and the result remains a scalar."
+        },
+        {
+          "name": "Invalid shapes",
+          "code": "for x,w in [([1,2],[1]),([[1,2]],[1,2])]:\n    try:\n        linear_score(x,w)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid vectors accepted\")",
+          "explanation": "Reject both unequal lengths and matrix inputs."
+        }
+      ],
+      "hints": [
+        "A dot product sums elementwise products; the intermediate product vector is not the final score.",
+        "Validate both arrays are one-dimensional with equal shapes, then return float(x @ w + bias)."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Returning features * weights without summing.",
+      "Treating raw dot product as magnitude-independent similarity."
+    ],
+    "xp": 20,
+    "tags": [
+      "dot-products",
+      "linear-models"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "numpy-checkpoint-arrays",
+    "module": "numpy",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: score a normalized feature batch",
+    "minutes": 10,
+    "difficulty": "Developing",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "numpy-dot-products"
+    ],
+    "objectives": [
+      "Explain checkpoint: score a normalized feature batch by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "This checkpoint combines matrix shapes, feature-wise broadcasting, and dot products. Each row is one example. Subtract one offset per feature and then compute a weighted sum for each row, adding the same scalar bias to every result. You can reason about the operations in two stages: the centered matrix keeps shape (examples, features), and multiplying it by a weight vector produces shape (examples,).\n\nRequire offsets and weights to be one-dimensional vectors with the same feature count as the matrix. Reject mismatches instead of relying on whatever broadcasting happens to permit. Do not mutate the source matrix while centering it. A shaped empty batch should produce an empty score vector, making the function composable in pipelines where filtering sometimes removes all examples. Hand-calculating a tiny two-row example helps verify both the values and the chosen axes.",
+    "why": "A practical model-scoring stage often performs a fixed preprocessing transformation before a linear calculation. Combining those steps with explicit dimensions turns mathematical notation into a reusable batch operation and prevents training or retrieval features from being changed in place.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[2.,4.],[4.,8.]])\noffsets=np.asarray([1.,2.])\ncentered=X-offsets\nprint(centered)  # [[1.,2.],[3.,6.]]\nprint(centered@np.asarray([2.,-0.5]))  # [1.,3.]",
+      "explanation": "The same feature offsets are subtracted from every row. Each centered row then produces one score by combining its two weighted components. The example separates those steps so their shapes remain visible. The checkpoint adds bias and complete dimension checks, including a zero-row batch, while preserving the original matrix for reuse by other pipeline stages."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the operations in this scoring stage.",
+      "options": [
+        "Add scalar bias",
+        "Validate array dimensions",
+        "Subtract feature offsets",
+        "Multiply by weights"
+      ],
+      "answer": [
+        "Validate array dimensions",
+        "Subtract feature offsets",
+        "Multiply by weights",
+        "Add scalar bias"
+      ],
+      "explanation": "Validate dimensions before subtraction so accidental broadcasting cannot redefine the operation."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement centered_scores(X,offsets,weights,bias). X must be a matrix; offsets and weights must be vectors matching its feature count. Return (X-offsets) @ weights + bias as one score per row without modifying X. Invalid shapes raise ValueError; shaped empty batches are valid.",
+      "starter": "import numpy as np\n\ndef centered_scores(X, offsets, weights, bias):\n    pass",
+      "solution": "import numpy as np\n\ndef centered_scores(X, offsets, weights, bias):\n    x=np.asarray(X,dtype=float)\n    offset=np.asarray(offsets,dtype=float)\n    w=np.asarray(weights,dtype=float)\n    if x.ndim!=2 or offset.ndim!=1 or w.ndim!=1 or offset.shape!=(x.shape[1],) or w.shape!=offset.shape:\n        raise ValueError(\"Incompatible feature shapes\")\n    return (x-offset)@w+bias",
+      "solutionExplanation": "Validate dimensions before subtraction so accidental broadcasting cannot redefine the operation. After checks, the vectorized expression (x - offset) @ w + bias produces one value per row. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Combined values",
+          "code": "assert np.allclose(centered_scores([[2,4],[4,8]],[1,2],[2,-0.5],0.5),[1.5,3.5])",
+          "explanation": "Apply centering before the weighted sum and bias."
+        },
+        {
+          "name": "Nonmutation and empty",
+          "code": "X=np.asarray([[2.,4.]]); centered_scores(X,[1,2],[1,1],0); assert np.array_equal(X,[[2,4]]) and centered_scores(np.empty((0,2)),[0,0],[1,1],0).shape==(0,)",
+          "explanation": "The function must be safe for reused inputs and empty batches."
+        },
+        {
+          "name": "Reject wrong axis",
+          "code": "try:\n    centered_scores(np.zeros((3,2)),[0,0,0],[1,1],0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Wrong offset axis accepted\")",
+          "explanation": "One offset is required per feature, not per example."
+        }
+      ],
+      "hints": [
+        "Validate dimensions before subtraction so accidental broadcasting cannot redefine the operation.",
+        "After checks, the vectorized expression (x - offset) @ w + bias produces one value per row."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Centering the input in place and affecting later uses.",
+      "Confusing the number of examples with the number of features."
+    ],
+    "xp": 50,
+    "tags": [
+      "shapes",
+      "broadcasting",
+      "dot-products",
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "numpy-matrix-multiplication",
+    "module": "numpy",
+    "section": "Vector geometry",
+    "title": "Matrix multiplication maps batches to outputs",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-checkpoint-arrays"
+    ],
+    "objectives": [
+      "Explain matrix multiplication maps batches to outputs by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Matrix multiplication combines rows of the left matrix with columns of the right matrix. If X has shape (n,d) and W has shape (d,k), then X @ W has shape (n,k). Each output entry is a dot product between one example’s d features and one output’s d weights. The shared inner dimension d must match; the outer dimensions describe the result.\n\nThis operation differs from elementwise multiplication X*W, which multiplies corresponding positions under broadcasting rules. A dense neural-network layer often computes X @ W + b, where b has one value per output and broadcasts across examples. The transpose W.T swaps its axes, but transposing blindly until code runs is not a reliable fix. Decide which axis represents input features and which represents outputs, then write the shape relationship before performing the calculation.",
+    "why": "Neural networks and multi-output regressions apply several weighted combinations to a batch at once. Matrix multiplication expresses that calculation directly, and understanding inner dimensions prevents confusing input features, examples, and output units when translating model equations into NumPy.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[1.,2.,3.],[4.,5.,6.]])  # (2,3)\nW=np.asarray([[1.,0.],[0.,1.],[1.,1.]]) # (3,2)\nY=X@W                               # (2,2)\nprint(Y)  # [[4.,5.],[10.,11.]]",
+      "explanation": "Each row of X is one example with three features, and each column of W defines one output. The first output adds the first and third feature; the second adds the second and third. The result has two rows and two outputs. The exercise adds a bias vector and rejects incompatible matrices rather than relying on implicit reshaping."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What is the shape of (7, 4) @ (4, 3)?",
+      "options": [
+        "(7, 3)",
+        "(4, 4)",
+        "(7, 4, 3)"
+      ],
+      "answer": "(7, 3)",
+      "explanation": "The inner dimensions must match, and the outer dimensions become the result shape."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement dense_layer(X,W,bias). Require X shape (n,d), W shape (d,k), and bias shape (k,). Return X @ W + bias of shape (n,k). Invalid dimensionality or matching dimensions raise ValueError. A zero-row batch is valid.",
+      "starter": "import numpy as np\n\ndef dense_layer(X, W, bias):\n    pass",
+      "solution": "import numpy as np\n\ndef dense_layer(X, W, bias):\n    x=np.asarray(X,dtype=float)\n    w=np.asarray(W,dtype=float)\n    b=np.asarray(bias,dtype=float)\n    if x.ndim!=2 or w.ndim!=2 or b.ndim!=1 or x.shape[1]!=w.shape[0] or b.shape[0]!=w.shape[1]:\n        raise ValueError(\"Incompatible dense-layer shapes\")\n    return x@w+b",
+      "solutionExplanation": "The inner dimensions must match, and the outer dimensions become the result shape. Check X.shape[1] == W.shape[0] and len(bias) == W.shape[1], then use @ rather than *. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Outputs",
+          "code": "assert np.allclose(dense_layer([[1,2,3]],[[1,0],[0,1],[1,1]],[0.5,-0.5]),[[4.5,4.5]])",
+          "explanation": "Each column of W defines a distinct weighted output."
+        },
+        {
+          "name": "Empty batch",
+          "code": "assert dense_layer(np.empty((0,3)),np.ones((3,2)),[0,0]).shape==(0,2)",
+          "explanation": "Output shape preserves both batch and output axes."
+        },
+        {
+          "name": "Invalid shapes",
+          "code": "try:\n    dense_layer(np.ones((2,3)),np.ones((2,4)),np.zeros(4))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Inner dimensions do not match\")",
+          "explanation": "The input-feature dimension must agree across X and W."
+        }
+      ],
+      "hints": [
+        "The inner dimensions must match, and the outer dimensions become the result shape.",
+        "Check X.shape[1] == W.shape[0] and len(bias) == W.shape[1], then use @ rather than *."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Using elementwise multiplication for a dense layer.",
+      "Transposing weights without checking what each axis means."
+    ],
+    "xp": 20,
+    "tags": [
+      "matrix-multiplication",
+      "dense-layers",
+      "shapes"
+    ]
+  },
+  {
+    "id": "numpy-magnitude",
+    "module": "numpy",
+    "section": "Vector geometry",
+    "title": "Vector magnitude and unit directions",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-matrix-multiplication"
+    ],
+    "objectives": [
+      "Explain vector magnitude and unit directions by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "The Euclidean magnitude, or L2 norm, of a vector is the square root of the sum of its squared components. For [3,4], that is sqrt(9+16)=5. np.linalg.norm computes this directly. Dividing a nonzero vector by its magnitude produces a unit vector with norm one, preserving direction while removing scale. This is called L2 normalization.\n\nA zero vector has no direction, so dividing by its zero norm is undefined. An application must choose an explicit policy: reject it, leave it as zero, or handle it separately. This lesson leaves zero rows unchanged and explains that they are not unit directions. For a matrix of row vectors, compute norms with axis=1 and keepdims=True so the result has shape (rows,1). That shape broadcasts each row’s own norm across its features rather than mixing statistics across examples.",
+    "why": "Embedding similarity often depends on direction rather than magnitude. Row-wise normalization turns nonzero embeddings into comparable unit vectors and prepares efficient cosine calculations, while explicit zero-vector handling avoids NaNs that can corrupt retrieval ranking or evaluation metrics.",
+    "example": {
+      "code": "import numpy as np\nv=np.asarray([3.,4.])\nlength=np.linalg.norm(v)\nunit=v/length\nprint(length,unit)           # 5.0 [0.6 0.8]\nprint(np.linalg.norm(unit))  # approximately 1.0",
+      "explanation": "The squared components add to 25, so the original length is five. Dividing both components by five preserves their ratio and creates a vector of length one. The small floating-point tolerance in numerical tests matters because decimal results may not be exact. The exercise applies this calculation independently to matrix rows and defines what happens when a row is all zeros."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What is the L2 norm of [3, 4]?",
+      "options": [
+        "7",
+        "5",
+        "25"
+      ],
+      "answer": "5",
+      "explanation": "Divide each nonzero vector by its L2 norm; the norm of [3,4] is five."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement normalize_rows(X). Require a two-dimensional array and return a new float matrix whose nonzero rows have L2 norm one. Leave zero rows as zeros. Preserve the input and support shaped empty matrices.",
+      "starter": "import numpy as np\n\ndef normalize_rows(X):\n    pass",
+      "solution": "import numpy as np\n\ndef normalize_rows(X):\n    x=np.asarray(X,dtype=float)\n    if x.ndim!=2:\n        raise ValueError(\"Expected a matrix\")\n    norms=np.linalg.norm(x,axis=1,keepdims=True)\n    return np.divide(x,norms,out=np.zeros_like(x),where=norms!=0)",
+      "solutionExplanation": "Divide each nonzero vector by its L2 norm; the norm of [3,4] is five. Use axis=1, keepdims=True and np.divide with a zero-filled out array and where=norms != 0. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Normalize",
+          "code": "assert np.allclose(normalize_rows([[3,4],[0,2]]),[[0.6,0.8],[0,1]])",
+          "explanation": "Every row uses its own norm."
+        },
+        {
+          "name": "Zero policy",
+          "code": "out=normalize_rows([[0,0],[1,0]]); assert np.all(np.isfinite(out)) and np.array_equal(out[0],[0,0])",
+          "explanation": "Zero rows stay zero instead of becoming NaN."
+        },
+        {
+          "name": "Shape and nonmutation",
+          "code": "x=np.asarray([[3.,4.]]); normalize_rows(x); assert np.array_equal(x,[[3,4]]) and normalize_rows(np.empty((0,2))).shape==(0,2)",
+          "explanation": "Normalization returns new data and preserves an empty batch shape."
+        }
+      ],
+      "hints": [
+        "Divide each nonzero vector by its L2 norm; the norm of [3,4] is five.",
+        "Use axis=1, keepdims=True and np.divide with a zero-filled out array and where=norms != 0."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Dividing zero vectors without a documented policy.",
+      "Dropping the norm axis and broadcasting along the wrong dimension."
+    ],
+    "xp": 20,
+    "tags": [
+      "vector-magnitude",
+      "normalization"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "numpy-cosine",
+    "module": "numpy",
+    "section": "Vector geometry",
+    "title": "Implement cosine similarity from first principles",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-magnitude"
+    ],
+    "objectives": [
+      "Explain implement cosine similarity from first principles by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Cosine similarity compares vector directions by dividing their dot product by the product of their magnitudes. For nonzero vectors a and b, cosine(a,b)=(a·b)/(||a|| ||b||). Aligned directions give a value near 1, perpendicular vectors give 0, and opposite directions give -1. Scaling a vector by a positive factor does not change its direction or cosine similarity.\n\nThe formula is not just a definition to memorize. The numerator measures aligned weighted contributions, while the denominator removes the scale of both vectors. In NumPy, compute the dot product with @ and both magnitudes with np.linalg.norm. Zero vectors make the denominator zero; this lesson defines their similarity as 0 by application policy, rather than claiming the mathematical angle exists. Floating-point rounding can produce a value slightly outside [-1,1], so clipping the computed result can enforce the expected numerical range.",
+    "why": "Semantic retrieval compares a query embedding with document embeddings. Cosine similarity lets you focus on direction rather than raw embedding length, and implementing it yourself makes the role of normalization and zero-vector policy visible instead of hidden behind a search library.",
+    "example": {
+      "code": "import numpy as np\na=np.asarray([1.,0.])\nb=np.asarray([2.,2.])\nnumerator=a@b\ndenominator=np.linalg.norm(a)*np.linalg.norm(b)\nprint(numerator/denominator)  # approximately 0.7071\n# The denominator removes the longer vector's scale.",
+      "explanation": "The dot product is two, but the second vector’s magnitude is about 2.828. Dividing by both magnitudes produces an alignment score around 0.707 rather than a magnitude-dependent raw score. The exercise generalizes this calculation to equal-length vectors, handles zero magnitudes by an explicit policy, and keeps the numerical result inside its theoretical range."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What happens to cosine similarity when one nonzero vector is multiplied by 5?",
+      "options": [
+        "It stays the same",
+        "It is multiplied by 5",
+        "It always becomes 1"
+      ],
+      "answer": "It stays the same",
+      "explanation": "Cosine divides the dot product by both vector magnitudes, making positive scale irrelevant."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement cosine_similarity(a,b) for equal-length one-dimensional vectors. Return a Python float in [-1,1]. Define similarity as 0.0 when either vector has zero norm, including empty vectors. Invalid shapes raise ValueError. Inputs in this exercise are finite, moderate-magnitude numbers.",
+      "starter": "import numpy as np\n\ndef cosine_similarity(a, b):\n    pass",
+      "solution": "import numpy as np\n\ndef cosine_similarity(a, b):\n    x=np.asarray(a,dtype=float)\n    y=np.asarray(b,dtype=float)\n    if x.ndim!=1 or y.ndim!=1 or x.shape!=y.shape:\n        raise ValueError(\"Expected equal-length vectors\")\n    denominator=np.linalg.norm(x)*np.linalg.norm(y)\n    if denominator==0:\n        return 0.0\n    return float(np.clip((x@y)/denominator,-1.0,1.0))",
+      "solutionExplanation": "Cosine divides the dot product by both vector magnitudes, making positive scale irrelevant. Validate vector shapes, compute the norm product, return zero if it is zero, otherwise clip the quotient to [-1,1]. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Directions",
+          "code": "assert abs(cosine_similarity([1,0],[5,0])-1)<1e-12 and abs(cosine_similarity([1,0],[0,1]))<1e-12",
+          "explanation": "Positive scaling preserves alignment; perpendicular vectors have zero similarity."
+        },
+        {
+          "name": "Opposite and zero",
+          "code": "assert abs(cosine_similarity([1,0],[-2,0])+1)<1e-12 and cosine_similarity([0,0],[1,2])==0.0",
+          "explanation": "Opposite vectors have negative similarity; zero uses the explicit policy."
+        },
+        {
+          "name": "Known value and shape",
+          "code": "assert abs(cosine_similarity([1,0],[2,2])-2**-0.5)<1e-12\ntry:\n    cosine_similarity([1],[1,2])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Unequal lengths accepted\")",
+          "explanation": "Check a nontrivial angle and reject mismatched feature spaces."
+        }
+      ],
+      "hints": [
+        "Cosine divides the dot product by both vector magnitudes, making positive scale irrelevant.",
+        "Validate vector shapes, compute the norm product, return zero if it is zero, otherwise clip the quotient to [-1,1]."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Dividing by only one vector’s norm.",
+      "Claiming a zero vector has a defined mathematical angle."
+    ],
+    "xp": 20,
+    "tags": [
+      "cosine-similarity",
+      "dot-products",
+      "normalization"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "numpy-top-k",
+    "module": "numpy",
+    "section": "Vector geometry",
+    "title": "Rank similarities and retrieve top-k results",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-cosine"
+    ],
+    "objectives": [
+      "Explain rank similarities and retrieve top-k results by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Retrieval turns a score for each document into an ordered selection. Top-k means keeping the k highest-scoring entries, but a complete contract also defines ties, invalid k values, and what happens when fewer than k documents exist. np.argsort returns indices that would sort an array; sorting negative scores with a stable method gives descending scores while preserving input order for ties.\n\nIndices connect scores back to document IDs or metadata. Sorting scores alone loses that relationship and makes it easy to attach the wrong passage to a retrieved value. For very large arrays, partial selection with argpartition can be faster, but its selected entries still need ordering and a deliberate tie policy. Begin with a correct full sort, measure it on realistic data, and optimize only when the corpus size justifies the added complexity.",
+    "why": "A similarity function becomes useful search only when it returns the right documents in a predictable order. Stable top-k ranking preserves the mapping between embeddings and sources, which is essential for grounded answers, citations, and retrieval evaluation.",
+    "example": {
+      "code": "import numpy as np\nscores=np.asarray([0.4,0.9,0.9,0.1])\norder=np.argsort(-scores,kind=\"stable\")\nprint(order[:2])  # [1,2]; tied entries retain input order.\nids=[\"a\",\"b\",\"c\",\"d\"]\nprint([ids[i] for i in order[:2]])",
+      "explanation": "argsort returns positions rather than sorted score values. Those positions select the associated IDs, preserving the connection between a similarity measurement and its document. Negating scores changes ascending sort into descending ranking, and stable sorting provides the stated tie rule. The exercise returns Python integer positions and defines zero, oversized, and invalid k behavior explicitly."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why retrieve sorted indices instead of only sorted score values?",
+      "options": [
+        "To preserve score-to-document identity",
+        "To change every score to an integer",
+        "To avoid choosing a tie policy"
+      ],
+      "answer": "To preserve score-to-document identity",
+      "explanation": "Sorted indices retain the link between each score and its source document."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement top_indices(scores,k). Require a finite score vector and a nonnegative exact Python int k. Return up to k indices sorted by descending score, preserving original index order for ties. k=0 or empty scores returns []; oversized k returns all indices. Invalid inputs raise ValueError.",
+      "starter": "import numpy as np\n\ndef top_indices(scores, k):\n    pass",
+      "solution": "import numpy as np\n\ndef top_indices(scores, k):\n    values=np.asarray(scores,dtype=float)\n    if values.ndim!=1 or type(k) is not int or k<0 or not np.all(np.isfinite(values)):\n        raise ValueError(\"Invalid scores or k\")\n    return np.argsort(-values,kind=\"stable\")[:k].tolist()",
+      "solutionExplanation": "Sorted indices retain the link between each score and its source document. Validate k and finite one-dimensional scores, then take np.argsort(-values, kind=\"stable\")[:k].tolist(). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Ranking and ties",
+          "code": "assert top_indices([0.4,0.9,0.9,0.1],3)==[1,2,0]",
+          "explanation": "Stable order resolves equal scores by original position."
+        },
+        {
+          "name": "Boundaries",
+          "code": "assert top_indices([1,2],0)==[] and top_indices([],3)==[] and top_indices([1,2],5)==[1,0]",
+          "explanation": "The result never requires more entries than exist."
+        },
+        {
+          "name": "Invalid",
+          "code": "for values,k in [([1],-1),([float(\"nan\")],1),([[1]],1),([1],True)]:\n    try:\n        top_indices(values,k)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid rank input accepted\")",
+          "explanation": "Reject nonfinite scores and ambiguous size values."
+        }
+      ],
+      "hints": [
+        "Sorted indices retain the link between each score and its source document.",
+        "Validate k and finite one-dimensional scores, then take np.argsort(-values, kind=\"stable\")[:k].tolist()."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Sorting score values and losing document identities.",
+      "Assuming argpartition already returns results in ranked order."
+    ],
+    "xp": 20,
+    "tags": [
+      "ranking",
+      "top-k",
+      "retrieval"
+    ]
+  },
+  {
+    "id": "numpy-probability",
+    "module": "numpy",
+    "section": "Vector geometry",
+    "title": "Probability distributions describe uncertainty",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-top-k"
+    ],
+    "objectives": [
+      "Explain probability distributions describe uncertainty by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "A discrete probability distribution assigns a nonnegative weight to each possible outcome, with all probabilities summing to one. Counts can become empirical probabilities by dividing each count by the total. For counts [2,1,1], the distribution is [0.5,0.25,0.25]. These values describe observed relative frequency under the chosen sample, not a guarantee about every future batch.\n\nA categorical distribution chooses one of several outcomes, while a normal distribution models a continuous value with a mean and spread. Random sampling introduces variation, and a seeded generator makes a particular simulation reproducible without proving that its sample is representative. This lesson focuses on normalizing nonnegative counts. When the total count is zero, there is no observed frequency distribution; reject that case rather than inventing certainty. Checking finite values also prevents NaN or infinity from spreading into later calculations.",
+    "why": "Classification metrics, token sampling, and evaluation reports all use probability-like quantities. Distinguishing observed counts from normalized probabilities helps you reason about uncertainty and prevents invalid zero-total or negative inputs from producing misleading model-confidence summaries.",
+    "example": {
+      "code": "import numpy as np\ncounts=np.asarray([2.,1.,1.])\nprobabilities=counts/counts.sum()\nrng=np.random.default_rng(42)\nsamples=rng.choice(3,size=5,p=probabilities)\nprint(probabilities)\nprint(samples)  # Seeded simulation; not a model prediction.",
+      "explanation": "The normalization divides every count by the same positive total, producing a vector that sums to one. choice then draws category indices using those probabilities. The seed makes this demonstration repeatable, but five draws need not match the expected proportions exactly. The exercise implements only the deterministic normalization stage and explicitly rejects counts that cannot define a valid empirical distribution."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What are the empirical probabilities for counts [2, 1, 1]?",
+      "options": [
+        "[2, 1, 1]",
+        "[0.5, 0.25, 0.25]",
+        "[0.25, 0.5, 0.25]"
+      ],
+      "answer": "[0.5, 0.25, 0.25]",
+      "explanation": "Normalize by the total count; [2,1,1] has total four."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement probabilities_from_counts(counts). Accept a one-dimensional finite nonnegative numeric array with a positive finite sum. Return counts/sum as a NumPy vector. Reject empty, all-zero, negative, nonfinite, or nonvector inputs with ValueError.",
+      "starter": "import numpy as np\n\ndef probabilities_from_counts(counts):\n    pass",
+      "solution": "import numpy as np\n\ndef probabilities_from_counts(counts):\n    values=np.asarray(counts,dtype=float)\n    if values.ndim!=1 or not np.all(np.isfinite(values)) or np.any(values<0):\n        raise ValueError(\"Expected finite nonnegative counts\")\n    total=values.sum()\n    if total<=0 or not np.isfinite(total):\n        raise ValueError(\"A positive finite total is required\")\n    return values/total",
+      "solutionExplanation": "Normalize by the total count; [2,1,1] has total four. Validate finite nonnegative vector values and a positive finite total before dividing. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Normalize",
+          "code": "assert np.allclose(probabilities_from_counts([2,1,1]),[0.5,0.25,0.25])",
+          "explanation": "Relative frequency is count divided by the total."
+        },
+        {
+          "name": "Zeros allowed",
+          "code": "p=probabilities_from_counts([0,3,0]); assert np.array_equal(p,[0,1,0]) and abs(p.sum()-1)<1e-12",
+          "explanation": "Individual zero counts are valid when the total is positive."
+        },
+        {
+          "name": "Invalid distributions",
+          "code": "for values in [[],[0,0],[-1,2],[float(\"inf\"),1]]:\n    try:\n        probabilities_from_counts(values)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid counts accepted\")",
+          "explanation": "No observed total or invalid numeric values must not create a distribution."
+        }
+      ],
+      "hints": [
+        "Normalize by the total count; [2,1,1] has total four.",
+        "Validate finite nonnegative vector values and a positive finite total before dividing."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Treating a tiny random sample as proof of exact distribution frequencies.",
+      "Normalizing an all-zero vector and returning NaNs."
+    ],
+    "xp": 20,
+    "tags": [
+      "probability",
+      "distributions",
+      "randomness"
+    ]
+  },
+  {
+    "id": "numpy-checkpoint-retrieval",
+    "module": "numpy",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: rank a query against document vectors",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "numpy-probability"
+    ],
+    "objectives": [
+      "Explain checkpoint: rank a query against document vectors by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "This checkpoint turns vector geometry into a small retrieval operation. A matrix holds one document vector per row, and a query vector has the same feature dimension. Normalize each nonzero row and the query, then multiply the normalized matrix by the normalized query to obtain one cosine score per document. A zero query uses the defined policy of all-zero scores rather than an undefined division.\n\nRank the scores in descending order with stable ties and return selected indices. Zero document rows also receive score zero under this policy. That means they can rank above negatively aligned documents; this is a consequence of the policy, not a mathematical claim that zero vectors have an angle. Keep the policy visible so a real application can choose instead to exclude zero embeddings. The assessment combines shape validation, normalization, matrix multiplication, and top-k selection.",
+    "why": "This is the core computation behind a small embedding search system. Implementing the whole path reveals how row normalization, query shape, zero-vector policy, and tie-breaking interact before a vector database hides those details behind an API.",
+    "example": {
+      "code": "import numpy as np\nunit_docs=np.asarray([[1.,0.],[0.,1.],[-1.,0.]])\nunit_query=np.asarray([1.,0.])\nscores=unit_docs@unit_query\nprint(scores)  # [1.,0.,-1.]\nprint(np.argsort(-scores,kind=\"stable\"))",
+      "explanation": "The example starts with unit vectors so the matrix-vector products are already cosine similarities. Each row produces a score against the same query direction. Stable descending indices then connect those scores back to documents. The checkpoint must perform the missing normalization itself and explicitly handle zero vectors rather than assuming every input already has unit length."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "For unit document rows and a unit query, which expression gives cosine scores?",
+      "options": [
+        "documents @ query",
+        "documents + query",
+        "documents * query without a reduction"
+      ],
+      "answer": "documents @ query",
+      "explanation": "Dot products of unit vectors equal cosine similarity."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement retrieve_indices(documents,query,k). Require a finite matrix and finite matching query vector, plus nonnegative exact-int k. Use cosine similarity with zero vectors scoring zero, then return up to k indices in descending order with stable ties. Invalid shapes or values raise ValueError.",
+      "starter": "import numpy as np\n\ndef retrieve_indices(documents, query, k):\n    pass",
+      "solution": "import numpy as np\n\ndef retrieve_indices(documents, query, k):\n    docs=np.asarray(documents,dtype=float)\n    q=np.asarray(query,dtype=float)\n    if docs.ndim!=2 or q.ndim!=1 or docs.shape[1]!=q.shape[0] or type(k) is not int or k<0 or not np.all(np.isfinite(docs)) or not np.all(np.isfinite(q)):\n        raise ValueError(\"Invalid retrieval inputs\")\n    norms=np.linalg.norm(docs,axis=1,keepdims=True)\n    unit_docs=np.divide(docs,norms,out=np.zeros_like(docs),where=norms!=0)\n    qnorm=np.linalg.norm(q)\n    unit_query=q/qnorm if qnorm else np.zeros_like(q)\n    scores=unit_docs@unit_query\n    return np.argsort(-scores,kind=\"stable\")[:k].tolist()",
+      "solutionExplanation": "Dot products of unit vectors equal cosine similarity. Normalize document rows with keepdims=True, normalize the query separately, compute unit_docs @ unit_query, and stably rank the scores. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Cosine ranking",
+          "code": "assert retrieve_indices([[10,0],[1,1],[0,3]],[1,0],2)==[0,1]",
+          "explanation": "Magnitude should not replace direction as the ranking criterion."
+        },
+        {
+          "name": "Zero and ties",
+          "code": "assert retrieve_indices([[1,0],[0,0],[-1,0]],[0,0],3)==[0,1,2] and retrieve_indices([[1,0],[2,0]],[1,0],2)==[0,1]",
+          "explanation": "Zero-query scores tie, and positive scaling creates equal cosine scores."
+        },
+        {
+          "name": "Empty and mismatch",
+          "code": "assert retrieve_indices(np.empty((0,2)),[1,0],2)==[]\ntry:\n    retrieve_indices([[1,2]],[1],1)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Mismatched query accepted\")",
+          "explanation": "A known empty corpus is valid; different feature spaces are not."
+        }
+      ],
+      "hints": [
+        "Dot products of unit vectors equal cosine similarity.",
+        "Normalize document rows with keepdims=True, normalize the query separately, compute unit_docs @ unit_query, and stably rank the scores."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Normalizing the entire matrix with one global norm.",
+      "Forgetting that a zero-score policy can rank zero embeddings above negative scores."
+    ],
+    "xp": 50,
+    "tags": [
+      "cosine-similarity",
+      "retrieval",
+      "top-k",
+      "checkpoint"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "numpy-derivatives",
+    "module": "numpy",
+    "section": "Learning from error",
+    "title": "Derivatives measure local sensitivity",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-checkpoint-retrieval"
+    ],
+    "objectives": [
+      "Explain derivatives measure local sensitivity by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "A derivative measures how a function changes near a point when its input changes slightly. For f(x)=x², the derivative is 2x: near x=3, increasing x by a small amount changes f by roughly six times that amount. The derivative is a local slope, not the function value and not a guarantee about a large jump across the input range.\n\nA central finite difference approximates the slope using (f(x+h)-f(x-h))/(2h). It looks equally to both sides of the point and often gives a better approximation than a one-sided difference for smooth functions. The step h must balance approximation error against floating-point rounding; making h arbitrarily tiny is not always more accurate. Finite differences are useful for checking an analytic gradient on small examples, but they become expensive when a model has many parameters.",
+    "why": "Training adjusts parameters based on how they affect loss. Derivatives connect that idea to a measurable change in a Python function, and finite-difference checks help catch sign or scaling mistakes in hand-written gradients before those errors derail optimization.",
+    "example": {
+      "code": "def square(x):\n    return x*x\nx=3.0\nh=1e-4\nslope=(square(x+h)-square(x-h))/(2*h)\nprint(slope)  # approximately 6.0\nprint(square(x))  # 9.0: value and slope are different quantities.",
+      "explanation": "The two evaluations bracket the point of interest, and dividing their difference by the total input separation estimates the slope. The result is near six even though the function value is nine. The exercise generalizes the calculation to an injected scalar function and validates a positive finite step, making the approximation reusable for later gradient checks."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What is the derivative of x² at x=3?",
+      "options": [
+        "3",
+        "6",
+        "9"
+      ],
+      "answer": "6",
+      "explanation": "The derivative is local slope; for x squared, it is 2x."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement central_difference(function,x,h=1e-4) for a smooth scalar function. Return (f(x+h)-f(x-h))/(2*h). Require positive finite h and raise ValueError otherwise. The function itself is supplied by the caller.",
+      "starter": "import numpy as np\n\ndef central_difference(function, x, h=1e-4):\n    pass",
+      "solution": "import numpy as np\n\ndef central_difference(function, x, h=1e-4):\n    if not np.isfinite(h) or h<=0:\n        raise ValueError(\"h must be positive and finite\")\n    return (function(x+h)-function(x-h))/(2*h)",
+      "solutionExplanation": "The derivative is local slope; for x squared, it is 2x. Evaluate the function at x+h and x-h, divide their difference by 2*h, and reject nonpositive or nonfinite h. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Quadratic",
+          "code": "assert abs(central_difference(lambda x:x*x,3)-6)<1e-8",
+          "explanation": "The local slope of x squared at three is six."
+        },
+        {
+          "name": "Constant and linear",
+          "code": "assert abs(central_difference(lambda x:5,2))<1e-12 and abs(central_difference(lambda x:3*x+2,-4)-3)<1e-8",
+          "explanation": "Constant functions have zero slope; linear functions have constant slope."
+        },
+        {
+          "name": "Invalid step",
+          "code": "for h in [0,-1,float(\"nan\")]:\n    try:\n        central_difference(lambda x:x,0,h)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid finite-difference step accepted\")",
+          "explanation": "The denominator and neighborhood must be meaningful."
+        }
+      ],
+      "hints": [
+        "The derivative is local slope; for x squared, it is 2x.",
+        "Evaluate the function at x+h and x-h, divide their difference by 2*h, and reject nonpositive or nonfinite h."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Confusing function value with its derivative.",
+      "Assuming the smallest possible finite-difference step is always most accurate."
+    ],
+    "xp": 20,
+    "tags": [
+      "derivatives",
+      "finite-differences"
+    ],
+    "visual": "gradient"
+  },
+  {
+    "id": "numpy-gradients",
+    "module": "numpy",
+    "section": "Learning from error",
+    "title": "Gradients collect one derivative per parameter",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-derivatives"
+    ],
+    "objectives": [
+      "Explain gradients collect one derivative per parameter by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "When a function depends on several parameters, its gradient is a vector containing one partial derivative for each parameter. Each partial derivative asks how the loss changes when that parameter moves slightly while the others stay fixed. The gradient points in the direction of steepest local increase under the usual Euclidean geometry; moving in the negative gradient direction aims to reduce loss for a sufficiently small step.\n\nFor linear predictions X @ w and mean squared error mean((X @ w - y)²), the weight gradient is 2/n times X.T @ (X @ w - y). The residual vector describes each example’s prediction error. Multiplying by X.T accumulates how each feature contributes to those errors, and dividing by n matches the mean loss rather than a sum. Write down the shapes: X is (n,d), residuals are (n,), and the resulting gradient is (d,).",
+    "why": "Machine-learning libraries compute gradients automatically, but understanding this vector calculation makes training loops less mysterious. It also helps you diagnose wrong reduction factors or feature axes when implementing a small model or verifying an automatic-differentiation result.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[1.,2.],[3.,4.]])\nw=np.asarray([0.,0.])\ny=np.asarray([1.,2.])\nresidual=X@w-y\ngradient=(2/len(y))*(X.T@residual)\nprint(residual)  # [-1.,-2.]\nprint(gradient)  # [-7.,-10.]",
+      "explanation": "With zero weights, every prediction is zero, so residuals are the negative targets. X.T combines each feature column with those residuals, giving one derivative per weight. The factor 2/n comes from differentiating the squared error and averaging examples. The exercise implements this formula with shape and nonempty-batch checks, then compares it with a numerical derivative."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "If X has shape (8, 3), what is the shape of the weight gradient?",
+      "options": [
+        "(8,)",
+        "(3,)",
+        "(8,3)"
+      ],
+      "answer": "(3,)",
+      "explanation": "A gradient has one component per parameter, so three weights produce shape (3,)."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement mse_gradient(X,weights,targets). X is (n,d), weights is (d,), targets is (n,), and n must be positive. Return the gradient of mean squared error with respect to weights as shape (d,). Invalid shapes or empty examples raise ValueError.",
+      "starter": "import numpy as np\n\ndef mse_gradient(X, weights, targets):\n    pass",
+      "solution": "import numpy as np\n\ndef mse_gradient(X, weights, targets):\n    x=np.asarray(X,dtype=float)\n    w=np.asarray(weights,dtype=float)\n    y=np.asarray(targets,dtype=float)\n    if x.ndim!=2 or w.ndim!=1 or y.ndim!=1 or x.shape[0]==0 or x.shape!=(len(y),len(w)):\n        raise ValueError(\"Invalid regression shapes\")\n    return (2/x.shape[0])*(x.T@(x@w-y))",
+      "solutionExplanation": "A gradient has one component per parameter, so three weights produce shape (3,). Compute residuals = X @ weights - targets, then (2 / n) * (X.T @ residuals). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Known gradient",
+          "code": "assert np.allclose(mse_gradient([[1,2],[3,4]],[0,0],[1,2]),[-7,-10])",
+          "explanation": "The formula must include the factor 2/n."
+        },
+        {
+          "name": "Finite-difference check",
+          "code": "X=np.asarray([[1.,2.],[2.,-1.]]); w=np.asarray([0.3,-0.2]); y=np.asarray([1.,0.]); h=1e-5\nactual=mse_gradient(X,w,y); numeric=[]\nfor i in range(len(w)):\n    delta=np.zeros_like(w); delta[i]=h\n    numeric.append((np.mean((X@(w+delta)-y)**2)-np.mean((X@(w-delta)-y)**2))/(2*h))\nassert np.allclose(actual,numeric,atol=1e-8)",
+          "explanation": "An independent numerical check catches sign and scaling mistakes."
+        },
+        {
+          "name": "Reject empty",
+          "code": "try:\n    mse_gradient(np.empty((0,2)),[0,0],[])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Empty mean loss accepted\")",
+          "explanation": "A mean over zero training examples has no defined gradient here."
+        }
+      ],
+      "hints": [
+        "A gradient has one component per parameter, so three weights produce shape (3,).",
+        "Compute residuals = X @ weights - targets, then (2 / n) * (X.T @ residuals)."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Forgetting the averaging factor n.",
+      "Using X instead of X.T and mixing example and parameter axes."
+    ],
+    "xp": 20,
+    "tags": [
+      "gradients",
+      "linear-regression",
+      "mean-squared-error"
+    ],
+    "visual": "gradient"
+  },
+  {
+    "id": "numpy-descent",
+    "module": "numpy",
+    "section": "Learning from error",
+    "title": "Gradient descent takes controlled learning steps",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-gradients"
+    ],
+    "objectives": [
+      "Explain gradient descent takes controlled learning steps by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Gradient descent updates parameters by subtracting a learning rate times the gradient: new = old - rate * gradient. The minus sign moves against the direction of local increase. The learning rate controls step size; a rate that is too large can overshoot, oscillate, or diverge even when the gradient formula is correct. A smaller rate is not automatically better either, because progress may become impractically slow.\n\nFor a constant prediction c fitted to targets y, mean squared error has derivative 2(c - mean(y)). Its best value is the target mean, making this a transparent optimization example. Repeated updates should approach that value for suitable rates. Keep a history including the initial parameter so you can inspect the trajectory rather than only the final result. Zero requested steps should return the unchanged initial value, preserving a useful boundary case for tests and debugging.",
+    "why": "Training loops repeatedly update model parameters using a loss gradient. A one-parameter example makes the direction and learning-rate effect visible, helping distinguish a faulty gradient from an unstable optimization setting before working with a large neural network.",
+    "example": {
+      "code": "import numpy as np\ntargets=np.asarray([2.,4.])\nvalue=0.0\nrate=0.25\nfor step in range(3):\n    gradient=2*(value-targets.mean())\n    value=value-rate*gradient\n    print(value)  # 1.5, 2.25, 2.625; approaches 3.",
+      "explanation": "The target mean is three, so the initial gradient is negative and subtracting it increases the parameter. At a learning rate of 0.25, each update halves the remaining distance to the optimum. The exercise records the full trajectory, validates its small input contract, and leaves the choice of a sensible rate visible rather than silently clipping it."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which update moves against a loss gradient g?",
+      "options": [
+        "w + rate * g",
+        "w - rate * g",
+        "w * g"
+      ],
+      "answer": "w - rate * g",
+      "explanation": "Subtract the learning-rate-scaled gradient to move toward lower loss locally."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement fit_constant(targets,initial,rate,steps). Return a list containing initial plus every gradient-descent value for mean squared error of a constant prediction. Use gradient 2*(value-mean(targets)). Require a nonempty finite target vector, finite initial, positive finite rate, and nonnegative exact-int steps. Invalid input raises ValueError.",
+      "starter": "import numpy as np\n\ndef fit_constant(targets, initial, rate, steps):\n    pass",
+      "solution": "import numpy as np\n\ndef fit_constant(targets, initial, rate, steps):\n    y=np.asarray(targets,dtype=float)\n    if y.ndim!=1 or y.size==0 or not np.all(np.isfinite(y)) or not np.isfinite(rate) or rate<=0 or type(steps) is not int or steps<0 or not np.isfinite(initial):\n        raise ValueError(\"Invalid optimization inputs\")\n    value=float(initial)\n    history=[value]\n    target=float(y.mean())\n    for _ in range(steps):\n        value-=rate*2*(value-target)\n        history.append(value)\n    return history",
+      "solutionExplanation": "Subtract the learning-rate-scaled gradient to move toward lower loss locally. Compute the target mean once, keep history=[float(initial)], and append each updated value. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Trajectory",
+          "code": "assert np.allclose(fit_constant([2,4],0,0.25,3),[0,1.5,2.25,2.625])",
+          "explanation": "Each step uses the new current parameter."
+        },
+        {
+          "name": "Zero steps and convergence",
+          "code": "assert fit_constant([1,3],7,0.1,0)==[7.0] and abs(fit_constant([1,3],0,0.25,30)[-1]-2)<1e-8",
+          "explanation": "Zero steps preserve initialization; a sensible rate approaches the optimum."
+        },
+        {
+          "name": "Invalid",
+          "code": "for targets,rate,steps in [([],0.1,2),([1],0,2),([1],0.1,-1)]:\n    try:\n        fit_constant(targets,0,rate,steps)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid optimization accepted\")",
+          "explanation": "Reject undefined losses and invalid loop parameters."
+        }
+      ],
+      "hints": [
+        "Subtract the learning-rate-scaled gradient to move toward lower loss locally.",
+        "Compute the target mean once, keep history=[float(initial)], and append each updated value."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Adding the gradient and climbing the loss.",
+      "Assuming a correct update always converges regardless of learning rate."
+    ],
+    "xp": 20,
+    "tags": [
+      "gradient-descent",
+      "learning-rate",
+      "optimization"
+    ],
+    "visual": "gradient"
+  },
+  {
+    "id": "numpy-stability",
+    "module": "numpy",
+    "section": "Learning from error",
+    "title": "Numerical stability is part of correctness",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-descent"
+    ],
+    "objectives": [
+      "Explain numerical stability is part of correctness by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Floating-point numbers have limited precision and range. Some mathematically valid expressions overflow, underflow, or lose important digits when evaluated directly. Taking log(0) produces negative infinity, and exponentiating a large positive number can overflow. These are computational issues with consequences for training losses and probability calculations, not merely cosmetic warnings to suppress.\n\nA practical probability-loss calculation may clip probabilities to a small positive epsilon before taking logs. This keeps the result finite but changes the objective near zero, so the policy must be explicit. It should not silently turn arbitrary invalid negative numbers into probabilities. Validate the original input lies in [0,1], then apply the chosen floor. The next lesson will use an algebraically equivalent shift to stabilize softmax without changing its ideal mathematical probabilities, illustrating a different kind of numerical repair.",
+    "why": "AI evaluation and training frequently take logarithms of predicted probabilities. Explicit validation and a documented numerical floor prevent NaNs or infinities from poisoning a report, while making clear that clipped losses are approximations rather than exact penalties for impossible events.",
+    "example": {
+      "code": "import numpy as np\np=np.asarray([0.0,0.5,1.0])\nepsilon=1e-6\nclipped=np.clip(p,epsilon,1.0)\nlogs=np.log(clipped)\nprint(logs)\n# Zero uses log(epsilon), a deliberate finite approximation.",
+      "explanation": "The zero probability is replaced by epsilon before the logarithm, so every returned value is finite. The probability 0.5 and certainty 1.0 remain unchanged. This is a chosen approximation near zero, not proof that zero has a finite logarithm. The exercise validates the probability range and epsilon so clipping does not conceal malformed values."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does replacing probability zero with epsilon leave the exact log loss unchanged?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Clipping zero to epsilon changes the loss near zero; it is a documented approximation."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement safe_log_probabilities(probabilities,epsilon=1e-12). Accept a finite one-dimensional vector with every value in [0,1], and finite epsilon strictly between 0 and 1. Return log(max(p,epsilon)) elementwise. Empty input returns an empty vector. Invalid values raise ValueError; do not require probabilities to sum to one.",
+      "starter": "import numpy as np\n\ndef safe_log_probabilities(probabilities, epsilon=1e-12):\n    pass",
+      "solution": "import numpy as np\n\ndef safe_log_probabilities(probabilities, epsilon=1e-12):\n    p=np.asarray(probabilities,dtype=float)\n    if p.ndim!=1 or not np.all(np.isfinite(p)) or np.any(p<0) or np.any(p>1) or not np.isfinite(epsilon) or not 0<epsilon<1:\n        raise ValueError(\"Invalid probabilities or epsilon\")\n    return np.log(np.clip(p,epsilon,1.0))",
+      "solutionExplanation": "Clipping zero to epsilon changes the loss near zero; it is a documented approximation. Validate the probability range first, then use np.log(np.clip(p, epsilon, 1.0)). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Ordinary logs",
+          "code": "assert np.allclose(safe_log_probabilities([0.5,1]),[np.log(0.5),0])",
+          "explanation": "Valid probabilities above epsilon retain their logarithms."
+        },
+        {
+          "name": "Finite floor",
+          "code": "out=safe_log_probabilities([0,1e-8],1e-6); assert np.all(np.isfinite(out)) and np.allclose(out,[np.log(1e-6)]*2) and safe_log_probabilities([]).shape==(0,)",
+          "explanation": "The floor applies explicitly near zero and empty input is supported."
+        },
+        {
+          "name": "Reject invalid",
+          "code": "for p,e in [([-0.1],1e-6),([1.1],1e-6),([0.5],0),([float(\"nan\")],1e-6)]:\n    try:\n        safe_log_probabilities(p,e)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid probability accepted\")",
+          "explanation": "Clipping must not hide malformed inputs."
+        }
+      ],
+      "hints": [
+        "Clipping zero to epsilon changes the loss near zero; it is a documented approximation.",
+        "Validate the probability range first, then use np.log(np.clip(p, epsilon, 1.0))."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Suppressing warnings while leaving NaNs in downstream calculations.",
+      "Using clipping to silently accept negative probabilities."
+    ],
+    "xp": 20,
+    "tags": [
+      "numerical-stability",
+      "logarithms",
+      "probability"
+    ]
+  },
+  {
+    "id": "numpy-softmax",
+    "module": "numpy",
+    "section": "Learning from error",
+    "title": "Stable softmax turns logits into probabilities",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "numpy-stability"
+    ],
+    "objectives": [
+      "Explain stable softmax turns logits into probabilities by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "Softmax converts a vector of real-valued logits into positive values that sum to one. It exponentiates each logit and divides by the sum of all exponentials. Larger logits receive larger probabilities, but the output depends on relative differences rather than absolute offsets. Adding the same constant to every logit leaves the mathematical distribution unchanged because that common exponential factor cancels.\n\nUse this invariance for numerical stability: subtract the largest logit before exponentiating. The largest shifted value is zero, whose exponential is one, and all other exponentials are at most one. This avoids overflow from large positive logits. Very small contributions may underflow to zero, which is often an acceptable finite-precision approximation. Softmax probabilities are not automatically calibrated confidence estimates; they are a normalized representation of the supplied scores. Validate a nonempty finite vector so the normalization has a meaningful denominator.",
+    "why": "Language-model token sampling and multiclass classifiers often use softmax over logits. A stable implementation connects the mathematical normalization to reliable NumPy code and prevents large scores from producing infinity divided by infinity during otherwise ordinary inference.",
+    "example": {
+      "code": "import numpy as np\nlogits=np.asarray([1000.,1001.,1002.])\nshifted=logits-logits.max()\nweights=np.exp(shifted)\nprobabilities=weights/weights.sum()\nprint(probabilities)  # approximately [0.0900,0.2447,0.6652]\nprint(probabilities.sum())",
+      "explanation": "The raw logits are too large for direct exponentiation to be safe, but subtracting 1002 produces [-2,-1,0]. Their exponentials are finite and retain the same relative ratios as the ideal unshifted calculation. Dividing by their sum yields a probability vector. The exercise checks offset invariance, equal-logit behavior, and explicit rejection of undefined inputs."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why subtract the maximum logit before exponentiating?",
+      "options": [
+        "It changes the ranking intentionally",
+        "It avoids overflow without changing ideal probabilities",
+        "It makes every probability equal"
+      ],
+      "answer": "It avoids overflow without changing ideal probabilities",
+      "explanation": "Subtracting the same constant from every logit preserves ideal softmax ratios."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement stable_softmax(logits). Require a nonempty finite one-dimensional vector. Subtract its maximum, exponentiate, and normalize to a probability vector. Invalid dimensions, empty input, NaN, or infinity raise ValueError.",
+      "starter": "import numpy as np\n\ndef stable_softmax(logits):\n    pass",
+      "solution": "import numpy as np\n\ndef stable_softmax(logits):\n    values=np.asarray(logits,dtype=float)\n    if values.ndim!=1 or values.size==0 or not np.all(np.isfinite(values)):\n        raise ValueError(\"Expected nonempty finite logits\")\n    weights=np.exp(values-values.max())\n    return weights/weights.sum()",
+      "solutionExplanation": "Subtracting the same constant from every logit preserves ideal softmax ratios. Compute weights = np.exp(values - values.max()), then divide by weights.sum(). The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Large logits",
+          "code": "p=stable_softmax([1000,1001,1002]); assert np.all(np.isfinite(p)) and np.allclose(p,[0.09003057317,0.24472847105,0.66524095577],atol=1e-10)",
+          "explanation": "Large offsets must not overflow the calculation."
+        },
+        {
+          "name": "Invariance and uniform",
+          "code": "assert np.allclose(stable_softmax([1,2,3]),stable_softmax([101,102,103])) and np.allclose(stable_softmax([4,4,4]),[1/3]*3)",
+          "explanation": "Common offsets cancel and equal logits produce equal probabilities."
+        },
+        {
+          "name": "Reject undefined",
+          "code": "for values in [[],[float(\"inf\")],[float(\"nan\")],[[1,2]]]:\n    try:\n        stable_softmax(values)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid logits accepted\")",
+          "explanation": "The normalization requires a nonempty finite vector."
+        }
+      ],
+      "hints": [
+        "Subtracting the same constant from every logit preserves ideal softmax ratios.",
+        "Compute weights = np.exp(values - values.max()), then divide by weights.sum()."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Exponentiating raw large logits and producing infinities.",
+      "Interpreting normalized logits as automatically calibrated probabilities."
+    ],
+    "xp": 20,
+    "tags": [
+      "softmax",
+      "numerical-stability",
+      "probability"
+    ]
+  },
+  {
+    "id": "numpy-checkpoint-optimization",
+    "module": "numpy",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: verify one regression learning step",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "numpy-softmax"
+    ],
+    "objectives": [
+      "Explain checkpoint: verify one regression learning step by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "A training step should connect a loss definition, its gradient, and an update rule. This checkpoint uses a linear model without bias and mean squared error. Compute predictions, subtract targets to obtain residuals, derive the gradient with the matching averaging factor, then subtract the learning-rate-scaled gradient from the weights. Return both the updated weights and the loss evaluated before the update.\n\nThe returned loss makes the step inspectable without recomputing or confusing pre-update and post-update measurements. Keep the original weights unchanged so a caller can compare states or retry a calculation safely. A sufficiently small learning rate should reduce the loss on the supplied simple fixture, but do not claim every positive learning rate works for every dataset. Validate dimensions and a nonempty batch before any reduction, and use an independent numerical check to confirm the update direction.",
+    "why": "A correct training loop depends on agreement between loss scaling and gradient scaling. Implementing a complete step makes that relationship testable and provides the foundation for later NumPy neural-network exercises and locally runnable PyTorch training code.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[1.],[2.]])\ny=np.asarray([2.,4.])\nw=np.asarray([0.])\nresidual=X@w-y\nloss=np.mean(residual**2)\ngradient=(2/len(y))*(X.T@residual)\nprint(loss,gradient)  # 10.0, [-10.]",
+      "explanation": "The initial model predicts zero for both examples, giving residuals -2 and -4. Their squared mean is ten, and the feature-weighted gradient is -10. A small subtraction step therefore increases the weight toward its correct value of two. The checkpoint packages these calculations into a nonmutating function and returns the pre-update loss explicitly."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order a mean-squared-error training step.",
+      "options": [
+        "Update weights",
+        "Compute predictions and residuals",
+        "Compute gradient",
+        "Validate shapes"
+      ],
+      "answer": [
+        "Validate shapes",
+        "Compute predictions and residuals",
+        "Compute gradient",
+        "Update weights"
+      ],
+      "explanation": "Validate dimensions, calculate residuals, derive the matching mean-loss gradient, then update."
+    },
+    "exercise": {
+      "type": "independent",
+      "prompt": "Implement regression_step(X,weights,targets,rate). Require X shape (n,d), weights (d,), targets (n,), n>0, and positive finite rate. Return (new_weights, old_loss), using mean squared error and gradient 2/n * X.T @ (X@weights-targets). Do not mutate weights. Invalid contract raises ValueError.",
+      "starter": "import numpy as np\n\ndef regression_step(X, weights, targets, rate):\n    pass",
+      "solution": "import numpy as np\n\ndef regression_step(X, weights, targets, rate):\n    x=np.asarray(X,dtype=float)\n    w=np.asarray(weights,dtype=float)\n    y=np.asarray(targets,dtype=float)\n    if x.ndim!=2 or w.ndim!=1 or y.ndim!=1 or x.shape[0]==0 or x.shape!=(len(y),len(w)) or not np.isfinite(rate) or rate<=0:\n        raise ValueError(\"Invalid regression inputs\")\n    residual=x@w-y\n    loss=float(np.mean(residual**2))\n    gradient=(2/len(y))*(x.T@residual)\n    return w-rate*gradient,loss",
+      "solutionExplanation": "Validate dimensions, calculate residuals, derive the matching mean-loss gradient, then update. Return a new array w - rate * gradient alongside float(mean(residual ** 2)) computed before the update. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Known update",
+          "code": "new,loss=regression_step([[1],[2]],[0],[2,4],0.1); assert np.allclose(new,[1]) and abs(loss-10)<1e-12",
+          "explanation": "The pre-update loss is ten and the gradient step gives weight one."
+        },
+        {
+          "name": "Improvement and nonmutation",
+          "code": "X=np.asarray([[1.],[2.]]); w=np.asarray([0.]); y=np.asarray([2.,4.]); new,old=regression_step(X,w,y,0.1); assert np.mean((X@new-y)**2)<old and np.array_equal(w,[0])",
+          "explanation": "A suitable small step reduces this fixture’s loss without changing the old state."
+        },
+        {
+          "name": "Reject empty",
+          "code": "try:\n    regression_step(np.empty((0,1)),[0],[],0.1)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Undefined empty loss accepted\")",
+          "explanation": "A training step requires at least one example."
+        }
+      ],
+      "hints": [
+        "Validate dimensions, calculate residuals, derive the matching mean-loss gradient, then update.",
+        "Return a new array w - rate * gradient alongside float(mean(residual ** 2)) computed before the update."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Reporting the post-update loss under an old_loss contract.",
+      "Using a sum-loss gradient with a mean-loss learning-rate expectation."
+    ],
+    "xp": 50,
+    "tags": [
+      "gradients",
+      "gradient-descent",
+      "testing",
+      "checkpoint"
+    ],
+    "visual": "gradient"
+  },
+  {
+    "id": "numpy-project-index",
+    "module": "numpy",
+    "section": "Similarity-search project",
+    "title": "Similarity search · 1. Build a validated index",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "numpy-checkpoint-optimization"
+    ],
+    "objectives": [
+      "Explain similarity search · 1. build a validated index by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "The project begins by converting document records into an explicit index: a list of identifiers and a matrix with one embedding per row. The correspondence between those two structures is the most important invariant. Row i must always describe identifier i. Validate IDs are unique nonblank strings and embeddings are nonempty finite vectors with the same dimension before returning the index.\n\nThis project rejects zero vectors because they have no direction and should not enter its cosine-search corpus. That is a different, deliberate policy from the earlier teaching helper that assigned zero similarity. Requiring a nonempty corpus also makes the feature dimension unambiguous. Preserve input order and do not silently deduplicate or pad malformed records. A bad index should fail at construction instead of producing plausible but incorrectly attributed search results later in the pipeline.",
+    "why": "Embedding search relies on a reliable mapping from numerical rows back to source documents. Validating dimensions, IDs, and nonzero vectors before indexing catches corrupt exports early and prevents a search result from citing the wrong document or comparing incompatible embedding spaces.",
+    "example": {
+      "code": "import numpy as np\nrecords=[{\"id\":\"guide\",\"embedding\":[1.,0.]},{\"id\":\"notes\",\"embedding\":[0.,1.]}]\nids=[record[\"id\"] for record in records]\nmatrix=np.asarray([record[\"embedding\"] for record in records],dtype=float)\nprint(ids,matrix.shape)\nassert ids[1]==records[1][\"id\"]",
+      "explanation": "The two structures are built from the same ordered record list, preserving their row-to-ID relationship. The matrix has one row per document and a shared feature dimension. The project adds validation before exposing this representation: IDs must be unique and embeddings must be finite, nonempty, compatible, and nonzero. Those checks protect every later retrieval calculation that assumes the index is trustworthy."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which invariant connects a matrix index to source documents?",
+      "options": [
+        "Row i belongs to ID i",
+        "IDs should be sorted independently",
+        "Every vector must have a different length"
+      ],
+      "answer": "Row i belongs to ID i",
+      "explanation": "Keep document IDs and matrix rows aligned by constructing both from the same validated record sequence."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement build_index(records). Require a nonempty list of dictionaries with unique nonblank string id and finite, nonempty, nonzero one-dimensional embedding. All embeddings must share a dimension. Preserve IDs exactly and preserve record order. Return (ids, float_matrix). Invalid records raise ValueError.",
+      "starter": "import numpy as np\n\ndef build_index(records):\n    pass",
+      "solution": "import numpy as np\n\ndef build_index(records):\n    if not records:\n        raise ValueError(\"Corpus must be nonempty\")\n    ids=[]\n    vectors=[]\n    seen=set()\n    dimension=None\n    for record in records:\n        identifier=record.get(\"id\") if isinstance(record,dict) else None\n        if not isinstance(identifier,str) or not identifier.strip() or identifier in seen:\n            raise ValueError(\"IDs must be unique nonblank strings\")\n        try:\n            vector=np.asarray(record.get(\"embedding\"),dtype=float)\n        except (TypeError,ValueError) as error:\n            raise ValueError(\"Invalid embedding\") from error\n        if vector.ndim!=1 or vector.size==0 or not np.all(np.isfinite(vector)) or np.linalg.norm(vector)==0:\n            raise ValueError(\"Embedding must be a finite nonzero vector\")\n        if dimension is None:\n            dimension=vector.size\n        if vector.size!=dimension:\n            raise ValueError(\"Embedding dimensions must match\")\n        seen.add(identifier)\n        ids.append(identifier)\n        vectors.append(vector)\n    return ids,np.stack(vectors)",
+      "solutionExplanation": "Keep document IDs and matrix rows aligned by constructing both from the same validated record sequence. Validate each vector’s ndim, size, finiteness, norm, and shared dimension, then stack the vectors after checking unique IDs. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Index alignment",
+          "code": "ids,X=build_index([{\"id\":\"b\",\"embedding\":[1,2]},{\"id\":\"a\",\"embedding\":[3,4]}]); assert ids==[\"b\",\"a\"] and np.array_equal(X,[[1,2],[3,4]]) and X.dtype.kind==\"f\"",
+          "explanation": "Build IDs and rows in the same order without independent sorting."
+        },
+        {
+          "name": "Reject duplicate and empty",
+          "code": "for records in [[],[{\"id\":\"a\",\"embedding\":[1]},{\"id\":\"a\",\"embedding\":[2]}]]:\n    try:\n        build_index(records)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid corpus accepted\")",
+          "explanation": "A corpus must define a feature space and unique source identities."
+        },
+        {
+          "name": "Reject bad vectors",
+          "code": "for records in [[{\"id\":\"a\",\"embedding\":[0,0]}],[{\"id\":\"a\",\"embedding\":[1]},{\"id\":\"b\",\"embedding\":[1,2]}],[{\"id\":\"a\",\"embedding\":[float(\"nan\")]}]]:\n    try:\n        build_index(records)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Invalid embedding accepted\")",
+          "explanation": "Zero, mismatched, and nonfinite embeddings violate this index policy."
+        }
+      ],
+      "hints": [
+        "Keep document IDs and matrix rows aligned by constructing both from the same validated record sequence.",
+        "Validate each vector’s ndim, size, finiteness, norm, and shared dimension, then stack the vectors after checking unique IDs."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Sorting IDs independently of vector rows.",
+      "Padding incompatible vectors silently and pretending they share an embedding space."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "validation",
+      "embeddings",
+      "indexing"
+    ],
+    "project": {
+      "id": "numpy-capstone",
+      "title": "NumPy similarity-search system",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "numpy-project-rank",
+    "module": "numpy",
+    "section": "Similarity-search project",
+    "title": "Similarity search · 2. Implement the retrieval kernel",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "numpy-project-index"
+    ],
+    "objectives": [
+      "Explain similarity search · 2. implement the retrieval kernel by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "The retrieval kernel accepts an embedding matrix and one query vector, computes cosine similarities, and returns ranked positions with their scores. Normalize rows independently and normalize the query, then use one matrix-vector multiplication. Because this project rejects zero vectors, every normalization denominator must be positive. Validate that policy again at this reusable numerical boundary rather than relying on a caller to have used the index builder.\n\nA stable descending sort preserves document order when cosine scores tie. Limit the selection to k results, allowing k=0 and values larger than the corpus size. Keep the full numerical score associated with each selected index. The next milestone will map these positions back to document IDs; doing that separately keeps the numerical kernel testable without metadata. This is exact brute-force search over every row, which is appropriate for a small corpus and a useful baseline for later approximate indexes.",
+    "why": "A transparent exact-search kernel provides a correctness baseline before introducing vector databases or approximate nearest-neighbor algorithms. It exposes normalization, shape validation, and tie handling so later performance optimizations can be compared against a trusted numerical result.",
+    "example": {
+      "code": "import numpy as np\nX=np.asarray([[3.,0.],[1.,1.]])\nq=np.asarray([2.,0.])\nunit_rows=X/np.linalg.norm(X,axis=1,keepdims=True)\nunit_query=q/np.linalg.norm(q)\nscores=unit_rows@unit_query\nprint(scores)  # [1., approximately 0.7071]",
+      "explanation": "The first document and query have different magnitudes but the same direction, so their cosine score is one. The second document points diagonally and receives a lower score. Row-wise normalization makes one matrix-vector product sufficient. The project kernel adds explicit rejection of zero or malformed vectors and returns aligned index-score pairs after stable top-k ranking."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What kind of search does this kernel perform?",
+      "options": [
+        "Exact comparison against every row",
+        "An approximate graph index",
+        "A trained language model call"
+      ],
+      "answer": "Exact comparison against every row",
+      "explanation": "This is exact brute-force cosine search, a useful baseline for a small corpus."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement cosine_rank(matrix,query,k). Require a finite matrix of nonzero row vectors, a finite nonzero matching query vector with at least one feature, and nonnegative exact-int k. Return up to k (Python int index, Python float cosine) tuples, descending with stable ties. Invalid shapes/values or zero vectors raise ValueError. A shaped zero-row matrix is valid.",
+      "starter": "import numpy as np\n\ndef build_index(records):\n    if not records:\n        raise ValueError(\"Corpus must be nonempty\")\n    ids=[]\n    vectors=[]\n    seen=set()\n    dimension=None\n    for record in records:\n        identifier=record.get(\"id\") if isinstance(record,dict) else None\n        if not isinstance(identifier,str) or not identifier.strip() or identifier in seen:\n            raise ValueError(\"IDs must be unique nonblank strings\")\n        try:\n            vector=np.asarray(record.get(\"embedding\"),dtype=float)\n        except (TypeError,ValueError) as error:\n            raise ValueError(\"Invalid embedding\") from error\n        if vector.ndim!=1 or vector.size==0 or not np.all(np.isfinite(vector)) or np.linalg.norm(vector)==0:\n            raise ValueError(\"Embedding must be a finite nonzero vector\")\n        if dimension is None:\n            dimension=vector.size\n        if vector.size!=dimension:\n            raise ValueError(\"Embedding dimensions must match\")\n        seen.add(identifier)\n        ids.append(identifier)\n        vectors.append(vector)\n    return ids,np.stack(vectors)\n\ndef cosine_rank(matrix, query, k):\n    pass",
+      "solution": "import numpy as np\n\ndef build_index(records):\n    if not records:\n        raise ValueError(\"Corpus must be nonempty\")\n    ids=[]\n    vectors=[]\n    seen=set()\n    dimension=None\n    for record in records:\n        identifier=record.get(\"id\") if isinstance(record,dict) else None\n        if not isinstance(identifier,str) or not identifier.strip() or identifier in seen:\n            raise ValueError(\"IDs must be unique nonblank strings\")\n        try:\n            vector=np.asarray(record.get(\"embedding\"),dtype=float)\n        except (TypeError,ValueError) as error:\n            raise ValueError(\"Invalid embedding\") from error\n        if vector.ndim!=1 or vector.size==0 or not np.all(np.isfinite(vector)) or np.linalg.norm(vector)==0:\n            raise ValueError(\"Embedding must be a finite nonzero vector\")\n        if dimension is None:\n            dimension=vector.size\n        if vector.size!=dimension:\n            raise ValueError(\"Embedding dimensions must match\")\n        seen.add(identifier)\n        ids.append(identifier)\n        vectors.append(vector)\n    return ids,np.stack(vectors)\n\ndef cosine_rank(matrix, query, k):\n    X=np.asarray(matrix,dtype=float)\n    q=np.asarray(query,dtype=float)\n    if X.ndim!=2 or q.ndim!=1 or X.shape[1]!=q.size or q.size==0 or type(k) is not int or k<0 or not np.all(np.isfinite(X)) or not np.all(np.isfinite(q)):\n        raise ValueError(\"Invalid retrieval input\")\n    norms=np.linalg.norm(X,axis=1,keepdims=True)\n    qnorm=np.linalg.norm(q)\n    if np.any(norms==0) or qnorm==0:\n        raise ValueError(\"Zero vectors have no search direction\")\n    scores=np.clip((X/norms)@(q/qnorm),-1.0,1.0)\n    indices=np.argsort(-scores,kind=\"stable\")[:k]\n    return [(int(index),float(scores[index])) for index in indices]",
+      "solutionExplanation": "This is exact brute-force cosine search, a useful baseline for a small corpus. Normalize matrix rows and query separately, multiply, clip numerical scores, then stably sort and pair each index with its score. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Scores",
+          "code": "ranked=cosine_rank([[3,0],[1,1],[0,2]],[2,0],2); assert [i for i,s in ranked]==[0,1] and np.allclose([s for i,s in ranked],[1,2**-0.5])",
+          "explanation": "Return both source positions and magnitude-independent scores."
+        },
+        {
+          "name": "Ties and bounds",
+          "code": "assert [i for i,s in cosine_rank([[1,0],[2,0]],[1,0],5)]==[0,1] and cosine_rank([[1,0]],[1,0],0)==[] and cosine_rank(np.empty((0,2)),[1,0],2)==[]",
+          "explanation": "Stable ties and k boundaries must be deterministic."
+        },
+        {
+          "name": "Reject zero direction",
+          "code": "for X,q in [([[0,0]],[1,0]),([[1,0]],[0,0])]:\n    try:\n        cosine_rank(X,q,1)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Zero direction accepted\")",
+          "explanation": "The project’s index policy rejects undefined directions."
+        }
+      ],
+      "hints": [
+        "This is exact brute-force cosine search, a useful baseline for a small corpus.",
+        "Normalize matrix rows and query separately, multiply, clip numerical scores, then stably sort and pair each index with its score."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Using one norm for the entire document matrix.",
+      "Calling brute-force search approximate or claiming an index was trained."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "cosine-similarity",
+      "top-k"
+    ],
+    "project": {
+      "id": "numpy-capstone",
+      "title": "NumPy similarity-search system",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "numpy-project-search",
+    "module": "numpy",
+    "section": "Similarity-search project",
+    "title": "Similarity search · 3. Return traceable results",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "numpy-project-rank"
+    ],
+    "objectives": [
+      "Explain similarity search · 3. return traceable results by connecting array operations to their mathematical meaning.",
+      "Implement the stated numerical contract and verify shapes, values, and edge cases."
+    ],
+    "explanation": "The final stage turns numerical ranking into a useful document-search result. Build the validated index, call the cosine retrieval kernel, and map each selected row back to its original identifier. Return a list of records containing id and score, with optional minimum-score filtering applied after ranking. A threshold is an application policy, not a universal probability of relevance; cosine scores are not calibrated confidence values.\n\nPreserve the ranked order and use the same index-ID alignment established in milestone one. A result may contain fewer than k documents because the corpus is small or the threshold excludes weak matches. Return an empty list when no match qualifies, rather than inventing a best answer. The completed system accepts supplied embeddings; it does not generate semantic embeddings itself or call an LLM. Its exact NumPy search is a working foundation that later RAG lessons can connect to document ingestion, real embedding models, and grounded answer generation.",
+    "why": "A useful retrieval component must return traceable sources and honestly represent missing matches. Connecting validated embeddings to stable IDs produces a complete small search system while keeping its limits clear: it ranks supplied vectors and does not create semantic knowledge or generated answers.",
+    "example": {
+      "code": "ids=[\"python-guide\",\"recipe\"]\nranked=[(0,0.92),(1,0.15)]\nresults=[{\"id\":ids[index],\"score\":score} for index,score in ranked if score>=0.5]\nprint(results)\n# A similarity threshold filters evidence; it is not a calibrated probability.",
+      "explanation": "The ranked numerical positions are translated through the same ID list created with the matrix. Filtering keeps only sufficiently aligned entries without changing their order. The example uses fixed illustrative scores; the final project computes real cosine values through the supplied kernel. The returned records expose source identity and score so a caller can display evidence or evaluate retrieval quality."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "If no document meets the minimum score, what should this search return?",
+      "options": [
+        "An empty result list",
+        "An invented document ID",
+        "A claim that the best result is certainly relevant"
+      ],
+      "answer": "An empty result list",
+      "explanation": "Return no result when evidence does not meet the application threshold."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement search_documents(records,query,k=3,minimum=-1.0) using the supplied build_index and cosine_rank helpers. Return ranked {id,score} dictionaries with score >= minimum, up to k results. Require a finite minimum in [-1,1]; preserve helper validation errors. The system ranks supplied embeddings and performs no embedding generation or model inference.",
+      "starter": "import numpy as np\n\ndef build_index(records):\n    if not records:\n        raise ValueError(\"Corpus must be nonempty\")\n    ids=[]\n    vectors=[]\n    seen=set()\n    dimension=None\n    for record in records:\n        identifier=record.get(\"id\") if isinstance(record,dict) else None\n        if not isinstance(identifier,str) or not identifier.strip() or identifier in seen:\n            raise ValueError(\"IDs must be unique nonblank strings\")\n        try:\n            vector=np.asarray(record.get(\"embedding\"),dtype=float)\n        except (TypeError,ValueError) as error:\n            raise ValueError(\"Invalid embedding\") from error\n        if vector.ndim!=1 or vector.size==0 or not np.all(np.isfinite(vector)) or np.linalg.norm(vector)==0:\n            raise ValueError(\"Embedding must be a finite nonzero vector\")\n        if dimension is None:\n            dimension=vector.size\n        if vector.size!=dimension:\n            raise ValueError(\"Embedding dimensions must match\")\n        seen.add(identifier)\n        ids.append(identifier)\n        vectors.append(vector)\n    return ids,np.stack(vectors)\n\ndef cosine_rank(matrix, query, k):\n    X=np.asarray(matrix,dtype=float)\n    q=np.asarray(query,dtype=float)\n    if X.ndim!=2 or q.ndim!=1 or X.shape[1]!=q.size or q.size==0 or type(k) is not int or k<0 or not np.all(np.isfinite(X)) or not np.all(np.isfinite(q)):\n        raise ValueError(\"Invalid retrieval input\")\n    norms=np.linalg.norm(X,axis=1,keepdims=True)\n    qnorm=np.linalg.norm(q)\n    if np.any(norms==0) or qnorm==0:\n        raise ValueError(\"Zero vectors have no search direction\")\n    scores=np.clip((X/norms)@(q/qnorm),-1.0,1.0)\n    indices=np.argsort(-scores,kind=\"stable\")[:k]\n    return [(int(index),float(scores[index])) for index in indices]\n\ndef search_documents(records, query, k=3, minimum=-1.0):\n    pass",
+      "solution": "import numpy as np\n\ndef build_index(records):\n    if not records:\n        raise ValueError(\"Corpus must be nonempty\")\n    ids=[]\n    vectors=[]\n    seen=set()\n    dimension=None\n    for record in records:\n        identifier=record.get(\"id\") if isinstance(record,dict) else None\n        if not isinstance(identifier,str) or not identifier.strip() or identifier in seen:\n            raise ValueError(\"IDs must be unique nonblank strings\")\n        try:\n            vector=np.asarray(record.get(\"embedding\"),dtype=float)\n        except (TypeError,ValueError) as error:\n            raise ValueError(\"Invalid embedding\") from error\n        if vector.ndim!=1 or vector.size==0 or not np.all(np.isfinite(vector)) or np.linalg.norm(vector)==0:\n            raise ValueError(\"Embedding must be a finite nonzero vector\")\n        if dimension is None:\n            dimension=vector.size\n        if vector.size!=dimension:\n            raise ValueError(\"Embedding dimensions must match\")\n        seen.add(identifier)\n        ids.append(identifier)\n        vectors.append(vector)\n    return ids,np.stack(vectors)\n\ndef cosine_rank(matrix, query, k):\n    X=np.asarray(matrix,dtype=float)\n    q=np.asarray(query,dtype=float)\n    if X.ndim!=2 or q.ndim!=1 or X.shape[1]!=q.size or q.size==0 or type(k) is not int or k<0 or not np.all(np.isfinite(X)) or not np.all(np.isfinite(q)):\n        raise ValueError(\"Invalid retrieval input\")\n    norms=np.linalg.norm(X,axis=1,keepdims=True)\n    qnorm=np.linalg.norm(q)\n    if np.any(norms==0) or qnorm==0:\n        raise ValueError(\"Zero vectors have no search direction\")\n    scores=np.clip((X/norms)@(q/qnorm),-1.0,1.0)\n    indices=np.argsort(-scores,kind=\"stable\")[:k]\n    return [(int(index),float(scores[index])) for index in indices]\n\ndef search_documents(records, query, k=3, minimum=-1.0):\n    if not np.isfinite(minimum) or not -1<=minimum<=1:\n        raise ValueError(\"minimum must be a finite cosine threshold\")\n    ids,matrix=build_index(records)\n    ranked=cosine_rank(matrix,query,k)\n    return [{\"id\":ids[index],\"score\":score} for index,score in ranked if score>=minimum]",
+      "solutionExplanation": "Return no result when evidence does not meet the application threshold. Build the index, call cosine_rank, then map each selected index to ids[index] and keep scores at least minimum. The tests check numerical values with tolerances where appropriate and also verify the boundary behavior promised by the interface.",
+      "tests": [
+        {
+          "name": "Complete search",
+          "code": "records=[{\"id\":\"diagonal\",\"embedding\":[1,1]},{\"id\":\"aligned\",\"embedding\":[4,0]},{\"id\":\"opposite\",\"embedding\":[-1,0]}]; result=search_documents(records,[1,0],3,0.5); assert [r[\"id\"] for r in result]==[\"aligned\",\"diagonal\"] and np.allclose([r[\"score\"] for r in result],[1,2**-0.5])",
+          "explanation": "Source IDs must follow the actual cosine ranking and threshold."
+        },
+        {
+          "name": "Missing information",
+          "code": "records=[{\"id\":\"other\",\"embedding\":[0,1]}]; assert search_documents(records,[1,0],3,0.5)==[] and search_documents(records,[1,0],0)==[]",
+          "explanation": "No qualifying source means no returned result."
+        },
+        {
+          "name": "Validation and boundary",
+          "code": "records=[{\"id\":\"a\",\"embedding\":[1,0]}]; assert search_documents(records,[1,0],1,1)[0][\"id\"]==\"a\"\ntry:\n    search_documents(records,[1,0],1,1.1)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid threshold accepted\")",
+          "explanation": "Include equality at the threshold and reject values outside cosine range."
+        }
+      ],
+      "hints": [
+        "Return no result when evidence does not meet the application threshold.",
+        "Build the index, call cosine_rank, then map each selected index to ids[index] and keep scores at least minimum."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Presenting cosine similarity as a calibrated relevance probability.",
+      "Claiming this supplied-vector search generates embeddings or calls an LLM."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "retrieval",
+      "similarity-search",
+      "traceability"
+    ],
+    "visual": "pipeline",
+    "project": {
+      "id": "numpy-capstone",
+      "title": "NumPy similarity-search system",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

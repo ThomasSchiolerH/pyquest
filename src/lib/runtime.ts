@@ -1,0 +1,9 @@
+import type {PythonTest} from '../schema';
+export interface RunResult {stdout:string;stderr:string;error?:string;tests:{name:string;passed:boolean;error?:string}[]}
+export interface WorkerLike {postMessage:(data:unknown)=>void;terminate:()=>void;onmessage:((event:MessageEvent)=>void)|null;onerror:((event:ErrorEvent)=>void)|null}
+export class PythonRuntime {
+ private worker:WorkerLike|null=null; private cancelPending:(()=>void)|null=null;
+ constructor(private factory:()=>WorkerLike=()=>new Worker(`${import.meta.env.BASE_URL}python-worker.js`),private timeout=10000,private loadTimeout=120000){}
+ run(code:string,tests:PythonTest[],packages:string[],status:(s:string)=>void=()=>{}):Promise<RunResult>{this.cancel();return new Promise((resolve)=>{const worker=this.worker=this.factory();let timer:ReturnType<typeof setTimeout>;let done=false;const finish=(result:RunResult)=>{if(done)return;done=true;clearTimeout(timer);worker.terminate();this.worker=null;this.cancelPending=null;resolve(result)};const timedOut=()=>finish({stdout:'',stderr:'',tests:[],error:'Execution timed out. The Python worker was stopped. Check for an infinite loop, then run again.'});timer=setTimeout(()=>finish({stdout:'',stderr:'',tests:[],error:'Python could not load in time. Check your connection and try again.'}),this.loadTimeout);this.cancelPending=()=>finish({stdout:'',stderr:'',tests:[],error:'Execution stopped. Your code has been saved.'});worker.onmessage=(event)=>{if(event.data.type==='status'){status(event.data.message);if(event.data.phase==='running'){clearTimeout(timer);timer=setTimeout(timedOut,this.timeout)}}else if(event.data.type==='result')finish(event.data.result)};worker.onerror=(event)=>finish({stdout:'',stderr:'',tests:[],error:event.message||'Python worker failed. Check your connection and try again.'});worker.postMessage({code,tests,packages})})}
+ cancel(){this.cancelPending?.();this.worker?.terminate();this.worker=null}
+}

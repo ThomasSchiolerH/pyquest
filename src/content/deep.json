@@ -1,0 +1,1650 @@
+[
+  {
+    "id": "deep-tensors",
+    "module": "deep",
+    "section": "Neural network foundations",
+    "title": "Read tensors as shaped collections of numbers",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain read tensors as shaped collections of numbers using concrete array shapes.",
+      "Write as_batch(values, features)."
+    ],
+    "explanation": "A tensor is an array with a defined shape and numerical type. A scalar has shape (), a feature vector might have shape (3,), and a batch of four such vectors has shape (4, 3). In deep learning, dimensions often have named roles such as batch, sequence, and feature. Those roles are conventions in your program; the array itself only stores sizes and strides.\n\nPyTorch tensors add facilities such as automatic differentiation and accelerator execution. NumPy arrays let us practice the same shape reasoning directly in the browser. A reshape changes how existing elements are grouped, preserving their order and count; it does not invent information. A transpose swaps axes and therefore changes which elements share a row. Before applying a layer, write down the shape of the input and the expected output. Many neural-network bugs are shape misunderstandings that happen to broadcast without raising an exception.",
+    "why": "An embedding model may return one vector per token, while a classifier expects one vector per document. Explicit tensor shapes help catch that mismatch before a seemingly valid multiplication produces predictions with the wrong meaning or an unintended batch dimension.",
+    "example": {
+      "code": "import numpy as np\nvalues = np.arange(12, dtype=float)\nbatch = values.reshape(4, 3)  # Four examples, three features each\nprint(batch.shape, batch[0])",
+      "explanation": "Twelve scalar values are grouped into four rows with three columns. The first row contains the first three original values, so reshaping preserves their order. The shape gives structural information, but only the program\u2019s contract tells us that rows are examples and columns are features rather than some other interpretation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "How many scalar elements are in a tensor of shape (2, 3, 4)?",
+      "options": [
+        "24",
+        "9",
+        "12"
+      ],
+      "answer": "24",
+      "explanation": "An embedding model may return one vector per token, while a classifier expects one vector per document. Explicit tensor shapes help catch that mismatch before a seemingly valid multiplication produces predictions with the wrong meaning or an unintended batch dimension."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write as_batch(values, features). Values is a flat sequence and features is a positive integer. Return a float NumPy array with features columns. Raise ValueError if the element count is not divisible by features. Empty values must return shape (0, features).",
+      "starter": "import numpy as np\n\ndef as_batch(values, features):\n    pass",
+      "solution": "import numpy as np\n\ndef as_batch(values, features):\n    if features<=0 or len(values)%features:\n        raise ValueError(\"Incompatible feature count\")\n    return np.asarray(values,dtype=float).reshape(len(values)//features,features)",
+      "solutionExplanation": "Use len(values)//features for rows and features for columns, including when the row count is zero. Twelve scalar values are grouped into four rows with three columns. The first row contains the first three original values, so reshaping preserves their order. The shape gives structural information, but only the program\u2019s contract tells us that rows are examples and columns are features rather than some other interpretation.",
+      "tests": [
+        {
+          "name": "Known shape",
+          "code": "a=as_batch(range(6),3); assert a.shape==(2,3) and np.array_equal(a[1],[3,4,5])",
+          "explanation": "Grouping must preserve row-major element order."
+        },
+        {
+          "name": "Empty batch",
+          "code": "assert as_batch([],4).shape==(0,4)",
+          "explanation": "An empty batch still retains the feature dimension."
+        },
+        {
+          "name": "Invalid size",
+          "code": "try:\n    as_batch([1,2,3],2)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid reshape must fail\")",
+          "explanation": "A reshape cannot silently discard or invent elements."
+        }
+      ],
+      "hints": [
+        "Check divisibility before reshaping the flat array.",
+        "Use len(values)//features for rows and features for columns, including when the row count is zero."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Confusing reshape with transpose changes the meaning of feature positions.",
+      "A tensor\u2019s shape does not itself name the batch or feature axis."
+    ],
+    "xp": 20,
+    "tags": [
+      "tensors",
+      "shapes",
+      "pytorch"
+    ]
+  },
+  {
+    "id": "deep-affine",
+    "module": "deep",
+    "section": "Neural network foundations",
+    "title": "Build a trainable layer from weights and biases",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-tensors"
+    ],
+    "objectives": [
+      "Explain build a trainable layer from weights and biases using concrete array shapes.",
+      "Write dense(X, W, b) returning np."
+    ],
+    "explanation": "A dense neural layer applies an affine transformation: output = X @ W + b. If X has shape (batch, input_features), W has shape (input_features, output_features), and b has shape (output_features,), the output has shape (batch, output_features). Each output column is a weighted combination of the input features plus its own bias. These weights and biases are the trainable parameters.\n\nThe bias is broadcast across the batch, so every example receives the same learned offset for a given output unit. Different examples still produce different outputs because their feature values differ. A dense layer without an activation is linear apart from its offset; stacking several affine layers alone can be collapsed into one affine transformation. Nonlinear activations will make deeper networks more expressive. First learn the dimensions and arithmetic of this building block, because the same operation appears inside feed-forward networks, attention projections, and classifiers.",
+    "why": "A neural document classifier might map a 384-dimensional embedding into 64 hidden features. Understanding the weight matrix dimensions makes parameter counts, memory use, and shape errors concrete instead of treating each layer as an opaque library object.",
+    "example": {
+      "code": "import numpy as np\nX = np.array([[1., 2.]])\nW = np.array([[1., -1.], [2., 0.]])\nb = np.array([0.5, 3.])\nprint(X @ W + b)  # [[5.5, 2.0]]",
+      "explanation": "The first output uses weights one and two, producing five before the bias. The second uses weights negative one and zero, producing negative one before its bias of three. The bias vector broadcasts across the single row here and would apply identically to every row in a larger batch."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "For 3 input features and 5 output features, what is W\u2019s shape under this convention?",
+      "options": [
+        "(3, 5)",
+        "(5, 3)",
+        "(3,)"
+      ],
+      "answer": "(3, 5)",
+      "explanation": "A neural document classifier might map a 384-dimensional embedding into 64 hidden features. Understanding the weight matrix dimensions makes parameter counts, memory use, and shape errors concrete instead of treating each layer as an opaque library object."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write dense(X, W, b) returning np.asarray(X) @ np.asarray(W) + np.asarray(b), with float arrays. Inputs follow the stated shapes. Support a zero-row batch; do not change the inputs.",
+      "starter": "import numpy as np\n\ndef dense(X, W, b):\n    pass",
+      "solution": "import numpy as np\n\ndef dense(X, W, b):\n    return np.asarray(X,dtype=float)@np.asarray(W,dtype=float)+np.asarray(b,dtype=float)",
+      "solutionExplanation": "The output is X @ W, followed by broadcasting the one-dimensional bias vector. The first output uses weights one and two, producing five before the bias. The second uses weights negative one and zero, producing negative one before its bias of three. The bias vector broadcasts across the single row here and would apply identically to every row in a larger batch.",
+      "tests": [
+        {
+          "name": "Affine output",
+          "code": "assert np.allclose(dense([[1,2]],[[1,-1],[2,0]],[0.5,3]),[[5.5,2]])",
+          "explanation": "Each output unit has its own weight column and bias."
+        },
+        {
+          "name": "Bias broadcast",
+          "code": "assert np.allclose(dense([[0,0],[0,0]],[[1],[2]],[7]),[[7],[7]])",
+          "explanation": "The bias applies to every example in a batch."
+        },
+        {
+          "name": "Empty batch",
+          "code": "assert dense(np.empty((0,2)),np.ones((2,3)),np.zeros(3)).shape==(0,3)",
+          "explanation": "The output retains the layer\u2019s width with no examples."
+        }
+      ],
+      "hints": [
+        "Use matrix multiplication, not elementwise multiplication.",
+        "The output is X @ W, followed by broadcasting the one-dimensional bias vector."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Transposing W without checking conventions swaps input and output roles.",
+      "Stacking only affine layers does not create nonlinear decision boundaries."
+    ],
+    "xp": 20,
+    "tags": [
+      "weights",
+      "biases",
+      "dense-layers"
+    ]
+  },
+  {
+    "id": "deep-activations",
+    "module": "deep",
+    "section": "Neural network foundations",
+    "title": "Introduce nonlinearity with activations",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-affine"
+    ],
+    "objectives": [
+      "Explain introduce nonlinearity with activations using concrete array shapes.",
+      "Write relu_with_grad(values) returning (activations, derivatives) as float NumPy arrays."
+    ],
+    "explanation": "An activation transforms each pre-activation value after an affine layer. ReLU returns max(0, x): it passes positive values unchanged and blocks negative values. Tanh smoothly maps values into (-1, 1), while sigmoid maps into (0, 1). These nonlinear functions let a network represent relationships that a single affine transformation cannot capture, such as XOR.\n\nThe activation also affects gradient flow. ReLU has derivative one for positive inputs and zero for negative inputs; we choose zero at exactly zero. Tanh has derivative 1 - tanh(x)^2, which becomes small for large-magnitude inputs. That saturation can slow learning. Activation choice depends on the layer\u2019s purpose: a binary output may use sigmoid, while hidden layers often use ReLU or related functions. In this lesson, implement both values and the ReLU derivative so the later backpropagation rule has an explicit numerical foundation.",
+    "why": "Adding hidden layers only helps if the model can represent nonlinear structure. Activations provide that capacity and influence whether learning signals reach earlier layers, making their values and derivatives central to debugging a neural training loop.",
+    "example": {
+      "code": "import numpy as np\nz = np.array([-2., 0., 3.])\nrelu = np.maximum(0, z)\ntanh = np.tanh(z)\nprint(relu, np.round(tanh, 3))",
+      "explanation": "ReLU removes negative activations and keeps the positive value three. Tanh keeps the sign but limits every magnitude below one, compressing large inputs. Neither operation changes the array shape. These elementwise functions differ from softmax, which couples values across an axis to create a normalized distribution."
+    },
+    "activity": {
+      "type": "match",
+      "question": "Match the activation to its range.",
+      "options": [
+        "ReLU",
+        "Tanh",
+        "Sigmoid"
+      ],
+      "answer": [
+        "[0, infinity)",
+        "(-1, 1)",
+        "(0, 1)"
+      ],
+      "explanation": "Adding hidden layers only helps if the model can represent nonlinear structure. Activations provide that capacity and influence whether learning signals reach earlier layers, making their values and derivatives central to debugging a neural training loop."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write relu_with_grad(values) returning (activations, derivatives) as float NumPy arrays. ReLU is max(0, x), and its derivative is 1 for x > 0 and 0 otherwise, including at zero.",
+      "starter": "import numpy as np\n\ndef relu_with_grad(values):\n    pass",
+      "solution": "import numpy as np\n\ndef relu_with_grad(values):\n    x=np.asarray(values,dtype=float)\n    return np.maximum(0,x),(x>0).astype(float)",
+      "solutionExplanation": "Convert the boolean array x > 0 to float; zero belongs to the inactive branch. ReLU removes negative activations and keeps the positive value three. Tanh keeps the sign but limits every magnitude below one, compressing large inputs. Neither operation changes the array shape. These elementwise functions differ from softmax, which couples values across an axis to create a normalized distribution.",
+      "tests": [
+        {
+          "name": "Mixed signs",
+          "code": "a,g=relu_with_grad([-2,0,3]); assert np.array_equal(a,[0,0,3]) and np.array_equal(g,[0,0,1])",
+          "explanation": "The derivative convention at zero is explicit."
+        },
+        {
+          "name": "Shape preserved",
+          "code": "a,g=relu_with_grad([[1,-1],[2,-2]]); assert a.shape==(2,2) and g.shape==(2,2)",
+          "explanation": "Elementwise activations preserve all dimensions."
+        },
+        {
+          "name": "Empty input",
+          "code": "a,g=relu_with_grad([]); assert a.size==0 and g.size==0",
+          "explanation": "Empty tensors remain valid elementwise inputs."
+        }
+      ],
+      "hints": [
+        "Use np.maximum for the values and a comparison for the derivative.",
+        "Convert the boolean array x > 0 to float; zero belongs to the inactive branch."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Using x >= 0 gives a different derivative convention at the kink.",
+      "Confusing sigmoid with softmax ignores the normalization axis."
+    ],
+    "xp": 20,
+    "tags": [
+      "activations",
+      "relu",
+      "gradients"
+    ]
+  },
+  {
+    "id": "deep-forward",
+    "module": "deep",
+    "section": "Neural network foundations",
+    "title": "Compose a two-layer forward pass",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-activations"
+    ],
+    "objectives": [
+      "Explain compose a two-layer forward pass using concrete array shapes.",
+      "Write forward(X, W1, b1, W2, b2) returning a NumPy array from a dense-ReLU-dense network."
+    ],
+    "explanation": "Forward propagation computes a model\u2019s output from its inputs and current parameters. A two-layer network can calculate Z1 = X @ W1 + b1, H = ReLU(Z1), then output = H @ W2 + b2. The hidden representation H is not a label; it is a learned intermediate set of features that the second layer uses. The output interpretation depends on the task and any final activation.\n\nKeep intermediate arrays when you will later differentiate the model. Backpropagation needs information such as the original input, hidden activations, and which ReLU values were positive. A forward cache stores those values from the same pass that produced the loss. Recomputing them with changed weights would give inconsistent gradients. This lesson returns an unnormalized output score, so it should not be called a probability. Adding a sigmoid or softmax is a separate decision based on the desired output contract.",
+    "why": "A neural model\u2019s architecture becomes easier to debug when each intermediate value is explicit. Shape checks and cached activations let an engineer isolate whether a failure comes from input preparation, hidden layers, output interpretation, or the later gradient calculation.",
+    "example": {
+      "code": "import numpy as np\nX = np.array([[1., -2.]])\nW1 = np.eye(2)\nH = np.maximum(0, X @ W1)\nscore = H @ np.array([[2.], [3.]]) + 0.5\nprint(H, score)",
+      "explanation": "The identity first-layer matrix preserves the input coordinates before ReLU. ReLU keeps the positive coordinate and zeros the negative one. The output layer therefore uses only the first hidden feature and adds its bias. The result is a raw score, and no probability interpretation is justified without an appropriate output transformation."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the forward pass.",
+      "options": [
+        "Apply hidden activation",
+        "Compute first affine layer",
+        "Compute output affine layer"
+      ],
+      "answer": [
+        "Compute first affine layer",
+        "Apply hidden activation",
+        "Compute output affine layer"
+      ],
+      "explanation": "A neural model\u2019s architecture becomes easier to debug when each intermediate value is explicit. Shape checks and cached activations let an engineer isolate whether a failure comes from input preparation, hidden layers, output interpretation, or the later gradient calculation."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write forward(X, W1, b1, W2, b2) returning a NumPy array from a dense-ReLU-dense network. Shapes follow the dense layer convention. No final sigmoid is applied. Support an empty batch with known feature width.",
+      "starter": "import numpy as np\n\ndef forward(X, W1, b1, W2, b2):\n    pass",
+      "solution": "import numpy as np\n\ndef forward(X, W1, b1, W2, b2):\n    hidden=np.maximum(0,np.asarray(X,dtype=float)@np.asarray(W1)+np.asarray(b1))\n    return hidden@np.asarray(W2)+np.asarray(b2)",
+      "solutionExplanation": "Multiply the hidden array by W2 and add b2; do not activate the final score. The identity first-layer matrix preserves the input coordinates before ReLU. ReLU keeps the positive coordinate and zeros the negative one. The output layer therefore uses only the first hidden feature and adds its bias. The result is a raw score, and no probability interpretation is justified without an appropriate output transformation.",
+      "tests": [
+        {
+          "name": "Known forward pass",
+          "code": "assert np.allclose(forward([[1,-2]],np.eye(2),[0,0],[[2],[3]],[0.5]),[[2.5]])",
+          "explanation": "The activation must occur between affine layers."
+        },
+        {
+          "name": "Hidden bias activates unit",
+          "code": "assert np.allclose(forward([[0]],[[1]],[2],[[3]],[1]),[[7]])",
+          "explanation": "Both biases affect the final prediction."
+        },
+        {
+          "name": "Empty batch",
+          "code": "assert forward(np.empty((0,2)),np.ones((2,3)),np.zeros(3),np.ones((3,1)),[0]).shape==(0,1)",
+          "explanation": "Layer composition should preserve the empty batch dimension."
+        }
+      ],
+      "hints": [
+        "Compute the first affine result, then apply np.maximum(0, result).",
+        "Multiply the hidden array by W2 and add b2; do not activate the final score."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Applying ReLU after the output instead changes the model architecture.",
+      "Calling raw output scores probabilities can produce invalid downstream decisions."
+    ],
+    "xp": 20,
+    "tags": [
+      "forward-pass",
+      "networks",
+      "shapes"
+    ]
+  },
+  {
+    "id": "deep-losses",
+    "module": "deep",
+    "section": "Neural network foundations",
+    "title": "Connect predictions to a differentiable loss",
+    "minutes": 8,
+    "difficulty": "Developing",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-forward"
+    ],
+    "objectives": [
+      "Explain connect predictions to a differentiable loss using concrete array shapes.",
+      "Write mse_with_grad(predictions, targets) for arrays of identical nonempty shape."
+    ],
+    "explanation": "A training loss measures how a model\u2019s outputs disagree with targets. For numerical regression, mean squared error averages the squared difference across examples and output coordinates. If predictions and targets have shape (batch, outputs), this convention divides by batch times outputs. Some libraries instead sum outputs before averaging batches, so read the reduction definition before comparing loss scales or gradients.\n\nFor binary classification, sigmoid probabilities are often paired with binary cross-entropy; for mutually exclusive classes, logits are often paired with a cross-entropy operation that includes a stable softmax internally. Applying softmax twice or using probabilities where logits are expected can change the calculation. In this browser exercise we use MSE to keep the derivative transparent: each prediction derivative is 2*(prediction-target)/number_of_elements. The loss is a scalar, while its gradient with respect to predictions has the same shape as the predictions.",
+    "why": "An apparently reasonable neural network can train poorly because its output type, target shape, and loss reduction do not agree. Understanding these contracts helps diagnose silent broadcasting and scaling errors before adjusting architecture or learning rate.",
+    "example": {
+      "code": "import numpy as np\npred = np.array([[1., 4.], [3., 2.]])\ntarget = np.array([[1., 2.], [2., 2.]])\ndifference = pred-target\nprint(np.mean(difference**2))  # 1.25\nprint(2*difference/difference.size)",
+      "explanation": "The four squared errors are zero, four, one, and zero, whose mean is one and a quarter. Dividing the derivative by four matches that exact mean reduction. The loss has no batch axis, but the gradient still has one entry for each prediction because each entry contributes to the scalar objective."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "If MSE averages six output elements, its prediction gradient divides by:",
+      "options": [
+        "6",
+        "Only the number of output columns",
+        "No denominator"
+      ],
+      "answer": "6",
+      "explanation": "An apparently reasonable neural network can train poorly because its output type, target shape, and loss reduction do not agree. Understanding these contracts helps diagnose silent broadcasting and scaling errors before adjusting architecture or learning rate."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write mse_with_grad(predictions, targets) for arrays of identical nonempty shape. Return (float mean_squared_error, NumPy gradient). The gradient is 2*(predictions-targets)/number_of_elements. Reject different shapes with ValueError.",
+      "starter": "import numpy as np\n\ndef mse_with_grad(predictions, targets):\n    pass",
+      "solution": "import numpy as np\n\ndef mse_with_grad(predictions, targets):\n    p=np.asarray(predictions,dtype=float); y=np.asarray(targets,dtype=float)\n    if p.shape!=y.shape or p.size==0:\n        raise ValueError(\"Matching nonempty shapes required\")\n    d=p-y\n    return float(np.mean(d*d)),2*d/d.size",
+      "solutionExplanation": "Use difference.size as the denominator because the loss averages all elements. The four squared errors are zero, four, one, and zero, whose mean is one and a quarter. Dividing the derivative by four matches that exact mean reduction. The loss has no batch axis, but the gradient still has one entry for each prediction because each entry contributes to the scalar objective.",
+      "tests": [
+        {
+          "name": "Value and derivative",
+          "code": "loss,g=mse_with_grad([[1,4],[3,2]],[[1,2],[2,2]]); assert abs(loss-1.25)<1e-9 and np.allclose(g,[[0,1],[0.5,0]])",
+          "explanation": "The derivative must match the declared mean reduction."
+        },
+        {
+          "name": "Perfect prediction",
+          "code": "loss,g=mse_with_grad([2,3],[2,3]); assert loss==0 and np.array_equal(g,[0,0])",
+          "explanation": "Zero error yields zero loss and gradient."
+        },
+        {
+          "name": "Reject broadcasting",
+          "code": "try:\n    mse_with_grad([[1],[2]],[1,2])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Different shapes must fail\")",
+          "explanation": "Accidental broadcasting can compare each prediction against multiple targets."
+        }
+      ],
+      "hints": [
+        "Convert both arrays and compare their exact shapes before subtracting.",
+        "Use difference.size as the denominator because the loss averages all elements."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "A target shaped (n,) can broadcast unexpectedly against predictions shaped (n,1).",
+      "Using a summed-loss gradient with a mean loss changes update magnitude."
+    ],
+    "xp": 20,
+    "tags": [
+      "loss",
+      "mse",
+      "gradients"
+    ]
+  },
+  {
+    "id": "deep-checkpoint-forward",
+    "module": "deep",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: inspect a neural forward report",
+    "minutes": 10,
+    "difficulty": "Developing",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "deep-losses"
+    ],
+    "objectives": [
+      "Explain checkpoint: inspect a neural forward report using concrete array shapes.",
+      "Write forward_report(X, W1, b1, W2, b2, targets)."
+    ],
+    "explanation": "This checkpoint combines tensor shapes, affine layers, activation, and loss into a single inspectable report. The network has one hidden ReLU layer and a linear output. Given fixed parameters, you will compute hidden activations, output predictions, and mean squared error against targets. No training occurs yet; every value is determined by the supplied inputs and weights.\n\nReturning intermediate values helps distinguish failure modes. If the hidden layer is all zero, negative pre-activations may be blocking information. If the output shape is wrong, a weight convention or target dimension may be inconsistent. If predictions look plausible but the loss is surprising, check the reduction and target alignment. These observations guide debugging, but they are not automatic diagnoses: some inputs legitimately produce inactive hidden units. The report is an instrument for understanding computation before adding the complexity of optimization.",
+    "why": "Practical deep-learning work involves inspecting intermediate behavior, not only calling fit. A small forward report teaches the debugging habit of tracing inputs through transformations and checking the loss against concrete predictions before trusting a longer training run.",
+    "example": {
+      "code": "import numpy as np\nhidden = np.array([[0., 2.], [1., 0.]])\noutput = hidden @ np.array([[1.], [2.]])\ntarget = np.array([[3.], [2.]])\nprint(output.tolist(), float(np.mean((output-target)**2)))",
+      "explanation": "The first output is four and the second is one. Their errors relative to the targets are one and negative one, giving mean squared error one. Because the hidden values are visible, it is possible to inspect which unit contributed to each prediction instead of treating the network as a black box."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Is a forward pass alone sufficient to learn new weight values?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Practical deep-learning work involves inspecting intermediate behavior, not only calling fit. A small forward report teaches the debugging habit of tracing inputs through transformations and checking the loss against concrete predictions before trusting a longer training run."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write forward_report(X, W1, b1, W2, b2, targets). Return {\"hidden\": nested list, \"predictions\": nested list, \"loss\": float MSE}. Inputs have valid matching shapes and a nonempty batch. Use ReLU only on the hidden layer.",
+      "starter": "import numpy as np\n\ndef forward_report(X, W1, b1, W2, b2, targets):\n    pass",
+      "solution": "import numpy as np\n\ndef forward_report(X, W1, b1, W2, b2, targets):\n    h=np.maximum(0,np.asarray(X,dtype=float)@np.asarray(W1)+np.asarray(b1))\n    p=h@np.asarray(W2)+np.asarray(b2)\n    return {\"hidden\":h.tolist(),\"predictions\":p.tolist(),\"loss\":float(np.mean((p-np.asarray(targets))**2))}",
+      "solutionExplanation": "Convert arrays to lists only when constructing the report, and compute loss on arrays. The first output is four and the second is one. Their errors relative to the targets are one and negative one, giving mean squared error one. Because the hidden values are visible, it is possible to inspect which unit contributed to each prediction instead of treating the network as a black box.",
+      "tests": [
+        {
+          "name": "Integrated report",
+          "code": "r=forward_report([[1,-2]],np.eye(2),[0,0],[[2],[3]],[0],[[3]]); assert r=={\"hidden\":[[1.0,0.0]],\"predictions\":[[2.0]],\"loss\":1.0}",
+          "explanation": "This checks affine transforms, ReLU, and loss together."
+        },
+        {
+          "name": "Negative output permitted",
+          "code": "r=forward_report([[1]],[[1]],[0],[[-2]],[0],[[-1]]); assert r[\"predictions\"]==[[-2.0]] and r[\"loss\"]==1",
+          "explanation": "The output layer has no ReLU under this architecture."
+        },
+        {
+          "name": "Multiple outputs",
+          "code": "r=forward_report([[1]],[[1]],[0],[[1,2]],[0,0],[[1,4]]); assert r[\"loss\"]==2.0",
+          "explanation": "MSE averages across output coordinates too."
+        }
+      ],
+      "hints": [
+        "Calculate and retain the hidden activation before the output layer.",
+        "Convert arrays to lists only when constructing the report, and compute loss on arrays."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Applying an extra output activation silently changes the specified model.",
+      "A forward report evaluates fixed parameters and does not train them."
+    ],
+    "xp": 50,
+    "tags": [
+      "checkpoint",
+      "forward-pass",
+      "loss"
+    ]
+  },
+  {
+    "id": "deep-chain-rule",
+    "module": "deep",
+    "section": "Learning through gradients",
+    "title": "Follow the chain rule through one neuron",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-checkpoint-forward"
+    ],
+    "objectives": [
+      "Explain follow the chain rule through one neuron using concrete array shapes.",
+      "Write neuron_grad(x, w, b, target) returning (dw, db) for squared error of tanh(w*x+b)."
+    ],
+    "explanation": "Backpropagation applies the chain rule to a sequence of operations. Consider z = w*x + b, a = tanh(z), and loss = (a-y)^2 for one example. The local derivatives are dloss/da = 2*(a-y), da/dz = 1-a^2, dz/dw = x, and dz/db = 1. Multiplying along each path gives the gradients for w and b.\n\nThis is a dependency calculation, not a separate mysterious learning algorithm. The forward pass computes z and a; the backward pass reuses them to propagate the loss sensitivity toward the parameters. The tanh derivative becomes small when the activation is close to negative or positive one, explaining saturation numerically. These gradients describe a local slope, not a guarantee that a large update improves the loss. A separate optimizer chooses how far to move using the gradients, usually with a learning-rate multiplier.",
+    "why": "When a neural layer learns slowly, examining its local derivatives can reveal saturated activations or blocked gradient paths. Implementing one complete chain makes library backpropagation easier to reason about and supports meaningful gradient checks later.",
+    "example": {
+      "code": "import math\nx,w,b,y = 2.0,0.1,0.0,1.0\na = math.tanh(w*x+b)\ndz = 2*(a-y)*(1-a*a)\nprint(dz*x, dz)  # Gradients for weight and bias",
+      "explanation": "The loss derivative first measures how changing the activation affects squared error. Multiplying by the tanh derivative converts that sensitivity into a derivative with respect to the pre-activation. Multiplying by x then follows the weight path, while the bias path multiplies by one and therefore keeps the same value."
+    },
+    "activity": {
+      "type": "fill",
+      "question": "Complete the derivative of tanh using its output a: 1 - ____",
+      "options": [
+        "a * a"
+      ],
+      "answer": "a * a",
+      "explanation": "When a neural layer learns slowly, examining its local derivatives can reveal saturated activations or blocked gradient paths. Implementing one complete chain makes library backpropagation easier to reason about and supports meaningful gradient checks later."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write neuron_grad(x, w, b, target) returning (dw, db) for squared error of tanh(w*x+b). This is a single-example loss with no averaging. Use math.tanh and the chain rule.",
+      "starter": "import math\n\ndef neuron_grad(x, w, b, target):\n    pass",
+      "solution": "import math\n\ndef neuron_grad(x, w, b, target):\n    a=math.tanh(w*x+b)\n    dz=2*(a-target)*(1-a*a)\n    return dz*x,dz",
+      "solutionExplanation": "The shared dz gradient becomes dw=dz*x and db=dz. The loss derivative first measures how changing the activation affects squared error. Multiplying by the tanh derivative converts that sensitivity into a derivative with respect to the pre-activation. Multiplying by x then follows the weight path, while the bias path multiplies by one and therefore keeps the same value.",
+      "tests": [
+        {
+          "name": "Origin derivative",
+          "code": "assert neuron_grad(2,0,0,1)==(-4.0,-2.0)",
+          "explanation": "At zero, tanh has derivative one."
+        },
+        {
+          "name": "No feature contribution",
+          "code": "dw,db=neuron_grad(0,1,0,1); assert dw==0 and db==-2",
+          "explanation": "A zero input blocks the weight path but not the bias path."
+        },
+        {
+          "name": "Finite difference check",
+          "code": "x,w,b,y=1.3,0.4,-0.2,0.8; eps=1e-6; numeric=((math.tanh((w+eps)*x+b)-y)**2-(math.tanh((w-eps)*x+b)-y)**2)/(2*eps); assert abs(neuron_grad(x,w,b,y)[0]-numeric)<1e-6",
+          "explanation": "The analytic gradient must match a numerical slope estimate."
+        }
+      ],
+      "hints": [
+        "Compute the activation once, then multiply the loss derivative by 1-a*a.",
+        "The shared dz gradient becomes dw=dz*x and db=dz."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Forgetting the activation derivative treats a nonlinear neuron as a linear one.",
+      "Using a derivative calculated after updating weights mixes two parameter states."
+    ],
+    "xp": 20,
+    "tags": [
+      "backpropagation",
+      "chain-rule",
+      "tanh"
+    ],
+    "visual": "gradient"
+  },
+  {
+    "id": "deep-computational-graphs",
+    "module": "deep",
+    "section": "Learning through gradients",
+    "title": "Accumulate gradients along shared paths",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-chain-rule"
+    ],
+    "objectives": [
+      "Explain accumulate gradients along shared paths using concrete array shapes.",
+      "Write branched_grad(w, x) returning the derivative with respect to w of (w*x)**2 + w*x."
+    ],
+    "explanation": "A computational graph represents operations as nodes connected by dependencies. When a value influences the loss through more than one path, its total derivative is the sum of the contributions from those paths. For example, if a = w*x and loss = a*a + a, the shared value a appears twice in multiplication and once in addition. The derivative with respect to a is 2*a + 1.\n\nReverse-mode differentiation starts from a scalar loss with sensitivity one and visits operations in reverse dependency order. Each operation sends contributions to its inputs, and contributions to a reused value accumulate rather than overwrite one another. This is why automatic-differentiation systems maintain a graph of the forward computation. In a training loop, gradients can also accumulate across backward calls unless explicitly cleared. Graph accumulation within one derivative and unwanted accumulation between training steps are related mechanics but different programming concerns.",
+    "why": "Neural architectures routinely reuse values through residual connections, branches, or shared parameters. Understanding gradient addition prevents subtle manual-backpropagation mistakes and explains why PyTorch training loops usually clear parameter gradients before each independent optimization step.",
+    "example": {
+      "code": "w,x = 2.0,3.0\na = w*x\nloss = a*a + a\nda = 2*a + 1  # Contributions from both downstream operations\ndw = da*x\nprint(loss, dw)",
+      "explanation": "The intermediate value is six, and the loss is thirty-six plus six. The squared branch contributes twelve to the derivative with respect to a, while the direct branch contributes one. Their sum is then multiplied by x to obtain the derivative with respect to w; keeping only one branch would miss part of the dependency."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When two graph paths contribute to the same parameter gradient, their contributions are:",
+      "options": [
+        "Added",
+        "Multiplied together",
+        "Replaced by the last path"
+      ],
+      "answer": "Added",
+      "explanation": "Neural architectures routinely reuse values through residual connections, branches, or shared parameters. Understanding gradient addition prevents subtle manual-backpropagation mistakes and explains why PyTorch training loops usually clear parameter gradients before each independent optimization step."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write branched_grad(w, x) returning the derivative with respect to w of (w*x)**2 + w*x. Support positive, negative, and zero inputs. Do not estimate the derivative numerically.",
+      "starter": "def branched_grad(w, x):\n    pass",
+      "solution": "def branched_grad(w, x):\n    a=w*x\n    return (2*a+1)*x",
+      "solutionExplanation": "The downstream derivative is 2*a+1; multiply by x to reach w. The intermediate value is six, and the loss is thirty-six plus six. The squared branch contributes twelve to the derivative with respect to a, while the direct branch contributes one. Their sum is then multiplied by x to obtain the derivative with respect to w; keeping only one branch would miss part of the dependency.",
+      "tests": [
+        {
+          "name": "Both branches",
+          "code": "assert branched_grad(2,3)==39",
+          "explanation": "The derivative includes the quadratic and direct paths."
+        },
+        {
+          "name": "Zero weight",
+          "code": "assert branched_grad(0,4)==4",
+          "explanation": "The linear path still contributes when the quadratic path is zero."
+        },
+        {
+          "name": "Zero input",
+          "code": "assert branched_grad(9,0)==0",
+          "explanation": "A zero input disconnects the parameter from the loss numerically."
+        }
+      ],
+      "hints": [
+        "Differentiate with respect to a=w*x first.",
+        "The downstream derivative is 2*a+1; multiply by x to reach w."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Overwriting gradient contributions loses dependencies in branched graphs.",
+      "Forgetting to clear gradients between optimizer steps can accumulate unintended history."
+    ],
+    "xp": 20,
+    "tags": [
+      "computational-graphs",
+      "backpropagation",
+      "autodiff"
+    ]
+  },
+  {
+    "id": "deep-gradient-check",
+    "module": "deep",
+    "section": "Learning through gradients",
+    "title": "Check derivatives with finite differences",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-computational-graphs"
+    ],
+    "objectives": [
+      "Explain check derivatives with finite differences using concrete array shapes.",
+      "Write numerical_gradient(fn, values, h=1e-5)."
+    ],
+    "explanation": "Automatic differentiation computes derivatives by composing known local derivative rules through a graph. It is different from symbolic algebra and from finite differences. A finite-difference check approximates a derivative by perturbing an input and observing how the output changes. The central formula (f(x+h)-f(x-h))/(2*h) often gives a useful numerical check for a smooth scalar function.\n\nThe step h must balance approximation error against floating-point cancellation. Very large steps do not represent a local slope; extremely tiny steps can subtract nearly equal numbers and lose precision. Around 1e-5 or 1e-6 is a reasonable starting point for ordinary float64 examples, not a universal guarantee. Avoid checking exactly at nondifferentiable points such as ReLU\u2019s zero. The browser exercise uses NumPy and numerical checks; the optional local PyTorch example demonstrates autograd explicitly and is not executed by the browser runtime.",
+    "why": "Gradient checks catch missing factors, incorrect reductions, and transposed derivatives in custom neural components. Comparing a hand-derived gradient against a numerical estimate provides independent evidence before trusting thousands of optimizer steps on a larger dataset.",
+    "example": {
+      "code": "import math\nx,h = 0.7,1e-5\nnumeric = (math.sin(x+h)-math.sin(x-h))/(2*h)\nexact = math.cos(x)\nprint(abs(numeric-exact))",
+      "explanation": "The function values are evaluated symmetrically around x. Their difference divided by the total interval estimates the local slope, which can be compared with the known cosine derivative. Agreement supports this derivative at this point, but it does not prove every implementation branch is correct or that the same step size works at all scales."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Finite differences and automatic differentiation are the same algorithm.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Gradient checks catch missing factors, incorrect reductions, and transposed derivatives in custom neural components. Comparing a hand-derived gradient against a numerical estimate provides independent evidence before trusting thousands of optimizer steps on a larger dataset."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write numerical_gradient(fn, values, h=1e-5). Values is a one-dimensional numeric sequence and fn maps a NumPy vector to a scalar. Return a float NumPy vector of central-difference derivatives, perturbing one coordinate at a time. Never mutate values.",
+      "starter": "import numpy as np\n\ndef numerical_gradient(fn, values, h=1e-5):\n    pass",
+      "solution": "import numpy as np\n\ndef numerical_gradient(fn, values, h=1e-5):\n    x=np.asarray(values,dtype=float)\n    grad=np.zeros_like(x)\n    for i in range(len(x)):\n        plus=x.copy(); minus=x.copy()\n        plus[i]+=h; minus[i]-=h\n        grad[i]=(fn(plus)-fn(minus))/(2*h)\n    return grad",
+      "solutionExplanation": "Evaluate fn(plus) and fn(minus), subtract, and divide by 2*h. The function values are evaluated symmetrically around x. Their difference divided by the total interval estimates the local slope, which can be compared with the known cosine derivative. Agreement supports this derivative at this point, but it does not prove every implementation branch is correct or that the same step size works at all scales.",
+      "tests": [
+        {
+          "name": "Quadratic gradient",
+          "code": "assert np.allclose(numerical_gradient(lambda x: np.sum(x*x),[2,-3]),[4,-6],atol=1e-5)",
+          "explanation": "Independent coordinate perturbations recover a known vector derivative."
+        },
+        {
+          "name": "Input preserved",
+          "code": "x=np.array([1.,2.]); numerical_gradient(lambda z: z.sum(),x); assert np.array_equal(x,[1,2])",
+          "explanation": "Checking derivatives must not modify the tested parameters."
+        },
+        {
+          "name": "Empty vector",
+          "code": "assert numerical_gradient(lambda x: 0.0,[]).shape==(0,)",
+          "explanation": "A function with no input coordinates has an empty gradient vector."
+        }
+      ],
+      "hints": [
+        "Make two copies for each coordinate so perturbations do not carry over.",
+        "Evaluate fn(plus) and fn(minus), subtract, and divide by 2*h."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Using a single perturbed vector without resetting it contaminates later coordinates.",
+      "A finite-difference check at a ReLU kink has no unique true derivative to recover."
+    ],
+    "xp": 20,
+    "tags": [
+      "autodiff",
+      "gradient-check",
+      "pytorch"
+    ],
+    "localCode": "# Local only: python -m pip install torch\nimport torch\nx = torch.tensor([2., -3.], requires_grad=True)\nloss = (x*x).sum()\nloss.backward()\nprint(x.grad)  # tensor([4., -6.])\n# Autograd differentiates this graph; this code is not executed in PyQuest's browser.\n"
+  },
+  {
+    "id": "deep-batch-backprop",
+    "module": "deep",
+    "section": "Learning through gradients",
+    "title": "Differentiate a dense layer over a batch",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-gradient-check"
+    ],
+    "objectives": [
+      "Explain differentiate a dense layer over a batch using concrete array shapes.",
+      "Write dense_backward(X, W, G) returning (dX, dW, db) as NumPy arrays."
+    ],
+    "explanation": "For a dense layer Z = X @ W + b, the incoming gradient G describes how the loss changes with each element of Z. The parameter gradients are dW = X.T @ G and db = G.sum(axis=0). The input gradient is dX = G @ W.T. Each formula follows the same local chain rule, expressed as matrix multiplication over a batch.\n\nThe batch contributions add because each example depends on the same shared parameters. If the loss was averaged, its incoming gradient should already include that averaging factor. Dividing by batch size again would shrink the gradient incorrectly. Shapes provide a powerful check: dW must match W, db must match b, and dX must match X. A matrix expression can be numerically valid but semantically wrong if a transpose or reduction axis was chosen only to make dimensions fit. Derive the roles first, then verify them with small examples.",
+    "why": "Dense-layer gradients are the core of many neural networks, including feed-forward blocks inside transformers. Implementing the batch formulas makes it possible to inspect custom layers and recognize accidental double averaging that can make training unexpectedly slow.",
+    "example": {
+      "code": "import numpy as np\nX = np.array([[1., 2.], [3., 4.]])\nG = np.array([[0.5], [1.0]])\ndW = X.T @ G\ndb = G.sum(axis=0)\nprint(dW, db)",
+      "explanation": "The first weight receives contributions one times one half and three times one, totaling three and a half. The second receives two times one half and four times one, totaling five. The bias derivative adds the incoming gradients directly because every example\u2019s pre-activation depends on the bias with derivative one."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "If G already includes a mean-loss factor, should dense backward divide by the batch size again?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Dense-layer gradients are the core of many neural networks, including feed-forward blocks inside transformers. Implementing the batch formulas makes it possible to inspect custom layers and recognize accidental double averaging that can make training unexpectedly slow."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write dense_backward(X, W, G) returning (dX, dW, db) as NumPy arrays. G is the incoming gradient for X @ W + b and already contains any loss reduction. Support a zero-row batch with known shapes.",
+      "starter": "import numpy as np\n\ndef dense_backward(X, W, G):\n    pass",
+      "solution": "import numpy as np\n\ndef dense_backward(X, W, G):\n    X=np.asarray(X,dtype=float); W=np.asarray(W,dtype=float); G=np.asarray(G,dtype=float)\n    return G@W.T,X.T@G,G.sum(axis=0)",
+      "solutionExplanation": "Use G @ W.T, X.T @ G, and G.sum(axis=0), without another averaging factor. The first weight receives contributions one times one half and three times one, totaling three and a half. The second receives two times one half and four times one, totaling five. The bias derivative adds the incoming gradients directly because every example\u2019s pre-activation depends on the bias with derivative one.",
+      "tests": [
+        {
+          "name": "Known derivatives",
+          "code": "dx,dw,db=dense_backward([[1,2],[3,4]],[[2],[3]],[[0.5],[1]]); assert np.allclose(dw,[[3.5],[5]]) and np.allclose(db,[1.5]) and np.allclose(dx,[[1,1.5],[2,3]])",
+          "explanation": "The backward formulas must account for all batch contributions."
+        },
+        {
+          "name": "Zero upstream gradient",
+          "code": "dx,dw,db=dense_backward([[1,2]],[[3],[4]],[[0]]); assert not np.any(dx) and not np.any(dw) and not np.any(db)",
+          "explanation": "No downstream sensitivity means no gradient contribution."
+        },
+        {
+          "name": "Empty batch",
+          "code": "dx,dw,db=dense_backward(np.empty((0,2)),np.ones((2,3)),np.empty((0,3))); assert dx.shape==(0,2) and np.array_equal(dw,np.zeros((2,3))) and np.array_equal(db,np.zeros(3))",
+          "explanation": "Empty batches retain parameter shapes and contribute zero gradients."
+        }
+      ],
+      "hints": [
+        "Check that each returned gradient has the same shape as its corresponding input or parameter.",
+        "Use G @ W.T, X.T @ G, and G.sum(axis=0), without another averaging factor."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Averaging both the loss gradient and dense gradient divides by batch size twice.",
+      "Summing the bias gradient along the feature axis gives the wrong bias shape."
+    ],
+    "xp": 20,
+    "tags": [
+      "backpropagation",
+      "batching",
+      "matrix-multiplication"
+    ]
+  },
+  {
+    "id": "deep-training-loop",
+    "module": "deep",
+    "section": "Learning through gradients",
+    "title": "Separate forward, backward, and update steps",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-batch-backprop"
+    ],
+    "objectives": [
+      "Explain separate forward, backward, and update steps using concrete array shapes.",
+      "Write train_scalar(initial, target, rate, steps)."
+    ],
+    "explanation": "A training loop repeatedly performs four actions: compute predictions, calculate a loss, differentiate that loss, and update parameters. In PyTorch, a typical step clears gradients, runs the forward pass, calls loss.backward(), and then optimizer.step(). Clearing gradients matters because PyTorch accumulates them by default, which is useful for deliberate gradient accumulation but surprising otherwise.\n\nIn a manual NumPy loop, the same logic is visible in ordinary arrays. Calculate all gradients using the current parameters before applying updates. Record a loss history with a clearly defined timing convention: a loss measured before an update corresponds to the old parameter state. This lesson records the initial loss and then a new loss after every update, making the final entry directly comparable with the returned weights. Training loss alone does not show generalization; use separate validation evaluation without changing parameters to select settings and diagnose overfitting.",
+    "why": "A custom training loop gives an AI engineer control over loss functions, batching, and diagnostics. Understanding the order of operations prevents stale-gradient bugs and makes loss curves interpretable when investigating unstable or unexpectedly slow model learning.",
+    "example": {
+      "code": "w, target, rate = 0.0, 3.0, 0.1\nhistory = [(w-target)**2]\nfor _ in range(3):\n    gradient = 2*(w-target)\n    w -= rate*gradient\n    history.append((w-target)**2)\nprint(w, history)",
+      "explanation": "The first history value measures the initial parameter before training. Each iteration computes a derivative at the current value, moves in the opposite direction, and records the updated loss. There are four measurements for three updates, so the final loss matches the returned parameter rather than lagging one step behind."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order a manual training step.",
+      "options": [
+        "Update parameters",
+        "Compute predictions and loss",
+        "Compute gradients"
+      ],
+      "answer": [
+        "Compute predictions and loss",
+        "Compute gradients",
+        "Update parameters"
+      ],
+      "explanation": "A custom training loop gives an AI engineer control over loss functions, batching, and diagnostics. Understanding the order of operations prevents stale-gradient bugs and makes loss curves interpretable when investigating unstable or unexpectedly slow model learning."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write train_scalar(initial, target, rate, steps). Minimize (w-target)**2 with gradient descent. Return (final_w, history), where history includes the initial loss and one loss after each update. Steps is nonnegative; support zero steps.",
+      "starter": "def train_scalar(initial, target, rate, steps):\n    pass",
+      "solution": "def train_scalar(initial, target, rate, steps):\n    w=float(initial)\n    history=[(w-target)**2]\n    for _ in range(steps):\n        w-=rate*2*(w-target)\n        history.append((w-target)**2)\n    return w,history",
+      "solutionExplanation": "Each iteration uses gradient 2*(w-target), updates w, then appends the new squared error. The first history value measures the initial parameter before training. Each iteration computes a derivative at the current value, moves in the opposite direction, and records the updated loss. There are four measurements for three updates, so the final loss matches the returned parameter rather than lagging one step behind.",
+      "tests": [
+        {
+          "name": "One update",
+          "code": "w,h=train_scalar(0,3,0.1,1); assert abs(w-0.6)<1e-9 and len(h)==2 and abs(h[-1]-5.76)<1e-9",
+          "explanation": "The final loss must correspond to the updated parameter."
+        },
+        {
+          "name": "No updates",
+          "code": "assert train_scalar(2,5,0.1,0)==(2.0,[9.0])",
+          "explanation": "Zero steps preserve the initial state with one loss measurement."
+        },
+        {
+          "name": "Convergence",
+          "code": "w,h=train_scalar(0,3,0.1,50); assert abs(w-3)<0.001 and all(b<=a for a,b in zip(h,h[1:]))",
+          "explanation": "A stable learning rate should approach the target on this convex loss."
+        }
+      ],
+      "hints": [
+        "Start history with the loss at the initial parameter.",
+        "Each iteration uses gradient 2*(w-target), updates w, then appends the new squared error."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Recording a pre-update loss but labeling it as the final parameter\u2019s loss shifts the curve.",
+      "Forgetting optimizer.zero_grad in PyTorch can unintentionally accumulate gradients."
+    ],
+    "xp": 20,
+    "tags": [
+      "training-loops",
+      "optimization",
+      "pytorch"
+    ]
+  },
+  {
+    "id": "deep-checkpoint-gradients",
+    "module": "deep",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: verify and apply a gradient",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "deep-training-loop"
+    ],
+    "objectives": [
+      "Explain checkpoint: verify and apply a gradient using concrete array shapes.",
+      "Write train_step_report(x, y, w, b, rate) for nonempty matching numeric lists."
+    ],
+    "explanation": "This checkpoint combines a scalar computational graph, a derivative check, and a parameter update. The model predicts w*x + b and uses mean squared error across a nonempty batch. Derive the weight and bias gradients from the same set of errors, take one gradient-descent step, and report losses before and after the update. The report must describe the actual updated parameters.\n\nA lower loss is expected only for a suitable learning rate on the chosen data. Do not hardcode success or force the reported loss to decrease: an excessive rate may honestly make the objective worse. This distinction is fundamental in numerical software. The tests check known updates, a perfect-fit fixed point, and a case where a large learning rate diverges. A reliable training tool surfaces those results so the learner can reason about optimization rather than seeing an encouraging but fabricated success message.",
+    "why": "An AI training system needs faithful measurements even when an experiment fails. Combining gradients with before-and-after losses teaches how to distinguish implementation errors from an unstable optimization choice and discourages treating every optimizer step as guaranteed improvement.",
+    "example": {
+      "code": "x,y,w,b = 2.0,5.0,1.0,0.0\nerror = w*x+b-y\ndw,db = 2*error*x,2*error\nrate = 0.01\nnext_w,next_b = w-rate*dw,b-rate*db\nprint(error**2,(next_w*x+next_b-y)**2)",
+      "explanation": "The initial error is negative three. Both parameter derivatives are calculated before either parameter changes, then a small learning rate moves the prediction toward five. Recomputing the loss after the update provides evidence of improvement for this example; the same derivative with a much larger rate can overshoot the minimum."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "A gradient step is guaranteed to reduce loss for any positive learning rate.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "An AI training system needs faithful measurements even when an experiment fails. Combining gradients with before-and-after losses teaches how to distinguish implementation errors from an unstable optimization choice and discourages treating every optimizer step as guaranteed improvement."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write train_step_report(x, y, w, b, rate) for nonempty matching numeric lists. Return {\"w\": new_w, \"b\": new_b, \"before\": old MSE, \"after\": new MSE}. Use simultaneous mean-loss gradient updates and report true losses even if they increase.",
+      "starter": "def train_step_report(x, y, w, b, rate):\n    pass",
+      "solution": "def train_step_report(x, y, w, b, rate):\n    e=[w*a+b-t for a,t in zip(x,y)]\n    dw=2*sum(v*a for v,a in zip(e,x))/len(x)\n    db=2*sum(e)/len(x)\n    nw,nb=w-rate*dw,b-rate*db\n    return {\"w\":nw,\"b\":nb,\"before\":sum(v*v for v in e)/len(e),\"after\":sum((nw*a+nb-t)**2 for a,t in zip(x,y))/len(y)}",
+      "solutionExplanation": "Evaluate the loss twice: once with old parameters and again with the returned new parameters. The initial error is negative three. Both parameter derivatives are calculated before either parameter changes, then a small learning rate moves the prediction toward five. Recomputing the loss after the update provides evidence of improvement for this example; the same derivative with a much larger rate can overshoot the minimum.",
+      "tests": [
+        {
+          "name": "Known step",
+          "code": "r=train_step_report([2],[5],1,0,0.01); assert abs(r[\"w\"]-1.12)<1e-9 and abs(r[\"b\"]-0.06)<1e-9 and r[\"after\"]<r[\"before\"]",
+          "explanation": "The gradients and report must refer to consistent parameter states."
+        },
+        {
+          "name": "Perfect fit",
+          "code": "r=train_step_report([1,2],[3,5],2,1,0.1); assert r=={\"w\":2.0,\"b\":1.0,\"before\":0.0,\"after\":0.0}",
+          "explanation": "A zero gradient leaves the model unchanged."
+        },
+        {
+          "name": "Overshoot is reported",
+          "code": "r=train_step_report([2],[5],1,0,1); assert r[\"after\"]>r[\"before\"]",
+          "explanation": "Large-rate failure must remain visible rather than being hidden."
+        }
+      ],
+      "hints": [
+        "Compute all errors and both mean gradients before changing w or b.",
+        "Evaluate the loss twice: once with old parameters and again with the returned new parameters."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Clamping the reported loss to make progress look positive falsifies the experiment.",
+      "Updating one parameter before computing the other gradient mixes states."
+    ],
+    "xp": 50,
+    "tags": [
+      "checkpoint",
+      "gradients",
+      "training-loops"
+    ]
+  },
+  {
+    "id": "deep-optimizers",
+    "module": "deep",
+    "section": "Training reliable networks",
+    "title": "Add momentum to gradient descent",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-checkpoint-gradients"
+    ],
+    "objectives": [
+      "Explain add momentum to gradient descent using concrete array shapes.",
+      "Write momentum_step(parameters, gradients, velocity, rate, beta)."
+    ],
+    "explanation": "An optimizer converts gradients into parameter updates. Plain stochastic gradient descent subtracts learning_rate times the current gradient. Momentum also maintains a velocity that combines the previous velocity with the current gradient. Under the convention used here, v = beta*v + gradient and parameter = parameter - learning_rate*v. The velocity carries information across steps and can smooth oscillations while accelerating movement in a consistent direction.\n\nDifferent libraries use slightly different momentum conventions, such as multiplying the new gradient by one minus beta, so compare formulas rather than names alone. Adam additionally tracks moving averages of gradients and squared gradients, with bias correction and per-parameter scaling. Neither optimizer removes the need to choose a learning rate, inspect losses, and evaluate generalization. State matters: restarting an optimizer without restoring its velocity can change the trajectory even when model weights are restored exactly. This lesson makes that state explicit in the function\u2019s return value.",
+    "why": "Neural training checkpoints often need optimizer state as well as model parameters. Implementing momentum shows why resuming from weights alone can behave differently and makes the relationship between current gradients and accumulated optimization history concrete.",
+    "example": {
+      "code": "parameter,velocity = 1.0,0.2\ngradient,beta,rate = 0.5,0.9,0.1\nvelocity = beta*velocity + gradient\nparameter -= rate*velocity\nprint(parameter,velocity)",
+      "explanation": "The old velocity contributes 0.18, and the current gradient contributes 0.5, giving a new velocity of 0.68. The parameter then moves by 0.068. The update uses the new velocity, not the old one, and preserving that velocity is necessary to reproduce the next step after saving and resuming training."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "With beta = 0, this momentum convention becomes ordinary gradient descent.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "True",
+      "explanation": "Neural training checkpoints often need optimizer state as well as model parameters. Implementing momentum shows why resuming from weights alone can behave differently and makes the relationship between current gradients and accumulated optimization history concrete."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write momentum_step(parameters, gradients, velocity, rate, beta). Inputs are equally shaped numeric arrays. Return (new_parameters, new_velocity) as NumPy arrays using v = beta*velocity + gradients. Do not mutate any input.",
+      "starter": "import numpy as np\n\ndef momentum_step(parameters, gradients, velocity, rate, beta):\n    pass",
+      "solution": "import numpy as np\n\ndef momentum_step(parameters, gradients, velocity, rate, beta):\n    v=beta*np.asarray(velocity,dtype=float)+np.asarray(gradients,dtype=float)\n    p=np.asarray(parameters,dtype=float)-rate*v\n    return p,v",
+      "solutionExplanation": "Use new arrays from arithmetic rather than in-place changes to caller-owned arrays. The old velocity contributes 0.18, and the current gradient contributes 0.5, giving a new velocity of 0.68. The parameter then moves by 0.068. The update uses the new velocity, not the old one, and preserving that velocity is necessary to reproduce the next step after saving and resuming training.",
+      "tests": [
+        {
+          "name": "Known momentum",
+          "code": "p,v=momentum_step([1],[0.5],[0.2],0.1,0.9); assert np.allclose(p,[0.932]) and np.allclose(v,[0.68])",
+          "explanation": "The parameter update uses the newly accumulated velocity."
+        },
+        {
+          "name": "SGD limit",
+          "code": "p,v=momentum_step([2,3],[1,-1],[9,9],0.2,0); assert np.allclose(p,[1.8,3.2]) and np.array_equal(v,[1,-1])",
+          "explanation": "Zero momentum discards old velocity."
+        },
+        {
+          "name": "No mutation",
+          "code": "p=np.array([1.]); v=np.array([2.]); momentum_step(p,[3],v,0.1,0.9); assert p[0]==1 and v[0]==2",
+          "explanation": "Functional updates should preserve checkpoint inputs."
+        }
+      ],
+      "hints": [
+        "Compute the new velocity first, then subtract rate times that velocity.",
+        "Use new arrays from arithmetic rather than in-place changes to caller-owned arrays."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Restoring weights without momentum state does not reproduce an interrupted run.",
+      "Different momentum formulas can use the same name but different scaling."
+    ],
+    "xp": 20,
+    "tags": [
+      "optimizers",
+      "momentum",
+      "sgd"
+    ]
+  },
+  {
+    "id": "deep-mini-batches",
+    "module": "deep",
+    "section": "Training reliable networks",
+    "title": "Iterate through shuffled mini-batches",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-optimizers"
+    ],
+    "objectives": [
+      "Explain iterate through shuffled mini-batches using concrete array shapes.",
+      "Write batch_indices(n, size, seed) returning a list of lists."
+    ],
+    "explanation": "A mini-batch is a subset of training examples used to estimate a gradient. Full-batch training uses every example per update, while stochastic training may use one example and mini-batch training uses an intermediate size. Smaller batches can give noisier gradients and more frequent updates; larger batches use more memory and may need different learning-rate choices. Batch size is therefore an optimization and systems decision, not just a speed setting.\n\nAn epoch usually means one pass through the training dataset. Shuffling changes the order between epochs so the optimizer does not repeatedly see a fixed sequence of classes or sources. Use one permutation for features and labels to preserve alignment. The last batch can be smaller unless a deliberate drop-last policy is chosen. This exercise retains every example and returns index batches, which can then be applied consistently to every aligned array. A random seed makes the demonstration reproducible without implying that one seed proves robust learning.",
+    "why": "Large AI datasets cannot always fit into memory as one training batch. A correct mini-batch iterator manages memory while preserving feature-label alignment, ensuring that an implementation detail does not quietly train the network against the wrong answers.",
+    "example": {
+      "code": "import numpy as np\nindices = np.random.default_rng(7).permutation(7)\nfor start in range(0,len(indices),3):\n    batch = indices[start:start+3]\n    print(batch.tolist())",
+      "explanation": "The permutation includes each index exactly once. Slicing it in steps of three creates two full batches and one smaller final batch, retaining all seven examples. The same index array can select rows from both X and y, which is safer than independently shuffling each array and hoping their orders remain aligned."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "For 10 examples with batch size 4 and no dropped remainder, batch sizes are:",
+      "options": [
+        "4, 4, 2",
+        "4, 4",
+        "5, 5"
+      ],
+      "answer": "4, 4, 2",
+      "explanation": "Large AI datasets cannot always fit into memory as one training batch. A correct mini-batch iterator manages memory while preserving feature-label alignment, ensuring that an implementation detail does not quietly train the network against the wrong answers."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write batch_indices(n, size, seed) returning a list of lists. Use np.random.default_rng(seed).permutation(n), split into consecutive chunks of at most size, and retain the remainder. Require size > 0; n is nonnegative.",
+      "starter": "import numpy as np\n\ndef batch_indices(n, size, seed):\n    pass",
+      "solution": "import numpy as np\n\ndef batch_indices(n, size, seed):\n    if size<=0:\n        raise ValueError(\"Batch size must be positive\")\n    order=np.random.default_rng(seed).permutation(n).tolist()\n    return [order[i:i+size] for i in range(0,n,size)]",
+      "solutionExplanation": "Use range(0,n,size) and slices order[start:start+size] so the remainder is included. The permutation includes each index exactly once. Slicing it in steps of three creates two full batches and one smaller final batch, retaining all seven examples. The same index array can select rows from both X and y, which is safer than independently shuffling each array and hoping their orders remain aligned.",
+      "tests": [
+        {
+          "name": "All records retained",
+          "code": "b=batch_indices(10,4,7); assert [len(x) for x in b]==[4,4,2] and sorted(i for x in b for i in x)==list(range(10))",
+          "explanation": "The smaller final batch must not disappear."
+        },
+        {
+          "name": "Reproducible order",
+          "code": "assert batch_indices(8,3,5)==batch_indices(8,3,5)",
+          "explanation": "The same seed produces the same demonstration order."
+        },
+        {
+          "name": "Empty dataset",
+          "code": "assert batch_indices(0,4,7)==[]",
+          "explanation": "No examples means no training batches."
+        }
+      ],
+      "hints": [
+        "Generate one shuffled list of indices, not separately shuffled data arrays.",
+        "Use range(0,n,size) and slices order[start:start+size] so the remainder is included."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Shuffling X and y independently destroys their alignment.",
+      "Dropping the last batch without documenting it can exclude scarce examples."
+    ],
+    "xp": 20,
+    "tags": [
+      "batching",
+      "epochs",
+      "reproducibility"
+    ]
+  },
+  {
+    "id": "deep-dropout",
+    "module": "deep",
+    "section": "Training reliable networks",
+    "title": "Distinguish training and evaluation behavior",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-mini-batches"
+    ],
+    "objectives": [
+      "Explain distinguish training and evaluation behavior using concrete array shapes.",
+      "Write dropout(values, mask, keep, training=True)."
+    ],
+    "explanation": "Dropout is a regularization technique that randomly sets some hidden activations to zero during training. With inverted dropout, retained activations are divided by the keep probability. This keeps their expected value equal to the original activation, so evaluation can use the unmodified activations without another scaling step. Dropout does not guarantee better generalization and is usually combined with validation-based model selection.\n\nTraining and evaluation modes are distinct in frameworks such as PyTorch. model.eval() changes dropout and batch-normalization behavior, while torch.no_grad() disables gradient tracking; these are different responsibilities. This browser exercise uses an explicit mask instead of randomness, making the arithmetic testable. A keep probability of one leaves retained activations unchanged. During evaluation, ignore the mask and return the original values. The output expectation is preserved across masks, but any individual masked batch can differ substantially from the original activations.",
+    "why": "A neural model can appear unstable in production if dropout remains active during inference. Understanding training-versus-evaluation mode explains why reproducible evaluation requires more than disabling gradients and helps avoid accidental randomness in deployed predictions.",
+    "example": {
+      "code": "import numpy as np\nhidden = np.array([2.,4.,6.,8.])\nmask = np.array([1.,0.,1.,0.])\nkeep = 0.5\ntraining_output = hidden*mask/keep\nprint(training_output)  # [4, 0, 12, 0]",
+      "explanation": "Two activations are removed and the retained values are doubled because the keep probability is one half. Across independently sampled masks, each original activation has a one-half chance of being doubled and a one-half chance of being zero, preserving its expectation. This equality is statistical and does not mean each batch has the same average."
+    },
+    "activity": {
+      "type": "match",
+      "question": "Match the PyTorch operation to its purpose.",
+      "options": [
+        "model.eval()",
+        "torch.no_grad()"
+      ],
+      "answer": [
+        "Use evaluation behavior for layers such as dropout",
+        "Disable gradient recording"
+      ],
+      "explanation": "A neural model can appear unstable in production if dropout remains active during inference. Understanding training-versus-evaluation mode explains why reproducible evaluation requires more than disabling gradients and helps avoid accidental randomness in deployed predictions."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write dropout(values, mask, keep, training=True). Values and mask have the same shape, mask contains 0/1, and 0 < keep <= 1. During training return values*mask/keep as a NumPy array; during evaluation return a copy of values.",
+      "starter": "import numpy as np\n\ndef dropout(values, mask, keep, training=True):\n    pass",
+      "solution": "import numpy as np\n\ndef dropout(values, mask, keep, training=True):\n    x=np.asarray(values,dtype=float)\n    if not training:\n        return x.copy()\n    return x*np.asarray(mask)/keep",
+      "solutionExplanation": "For training, multiply by the binary mask and divide by keep, not by the dropout rate. Two activations are removed and the retained values are doubled because the keep probability is one half. Across independently sampled masks, each original activation has a one-half chance of being doubled and a one-half chance of being zero, preserving its expectation. This equality is statistical and does not mean each batch has the same average.",
+      "tests": [
+        {
+          "name": "Inverted scaling",
+          "code": "assert np.array_equal(dropout([2,4,6,8],[1,0,1,0],0.5),[4,0,12,0])",
+          "explanation": "Retained activations must be scaled by inverse keep probability."
+        },
+        {
+          "name": "Evaluation ignores mask",
+          "code": "assert np.array_equal(dropout([2,4],[0,0],0.5,False),[2,4])",
+          "explanation": "Inference must not randomly remove activations."
+        },
+        {
+          "name": "Independent evaluation copy",
+          "code": "x=np.array([2.]); y=dropout(x,[1],1,False); y[0]=9; assert x[0]==2",
+          "explanation": "Returning a copy avoids aliasing caller-owned arrays."
+        }
+      ],
+      "hints": [
+        "Handle evaluation first and return a copy before using the mask.",
+        "For training, multiply by the binary mask and divide by keep, not by the dropout rate."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Confusing dropout rate with keep probability gives the wrong scaling.",
+      "Calling no_grad alone does not switch dropout into evaluation mode."
+    ],
+    "xp": 20,
+    "tags": [
+      "dropout",
+      "regularization",
+      "evaluation-mode"
+    ]
+  },
+  {
+    "id": "deep-embeddings",
+    "module": "deep",
+    "section": "Training reliable networks",
+    "title": "Look up learned vectors for discrete IDs",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-dropout"
+    ],
+    "objectives": [
+      "Explain look up learned vectors for discrete ids using concrete array shapes.",
+      "Write embed(table, ids)."
+    ],
+    "explanation": "An embedding table maps discrete identifiers to learned numerical vectors. If a vocabulary has V tokens and each embedding has D coordinates, the table has shape (V, D). Looking up a token ID selects its row. A sequence of token IDs therefore becomes a sequence of vectors, with one added feature dimension. The table values are parameters that can be optimized through a downstream task.\n\nEmbedding lookup is equivalent to multiplying one-hot token vectors by the table, but indexing is far more memory-efficient. Nearby vectors may encode useful relationships after appropriate training, but random initial embeddings do not have semantic meaning. Repeated IDs should return repeated rows, preserving sequence order. A padding token may have special masking behavior in a full model; simply looking up its vector does not automatically remove its effect. This lesson focuses on the indexing contract so later attention operations receive correctly shaped token representations.",
+    "why": "LLMs, recommendation systems, and categorical-feature models all convert discrete IDs into vectors. Understanding lookup shapes connects Python indexing to trainable representation learning and prevents confusing arbitrary token numbers with meaningful numerical distances between words.",
+    "example": {
+      "code": "import numpy as np\ntable = np.array([[0.,0.],[1.,2.],[3.,4.]])\nids = np.array([2,1,2])\nprint(table[ids])  # Preserve repeated tokens and sequence order.",
+      "explanation": "The sequence requests row two, row one, and row two again, producing three two-dimensional vectors. The integer token IDs are indices, not numerical features to average directly. Repetition is preserved because the sequence\u2019s order and frequency carry information, while the table shares the same learned vector for every occurrence of a token."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "An embedding table with 1,000 tokens and 32 dimensions has shape:",
+      "options": [
+        "(1000, 32)",
+        "(32, 1000) by necessity",
+        "(1000,)"
+      ],
+      "answer": "(1000, 32)",
+      "explanation": "LLMs, recommendation systems, and categorical-feature models all convert discrete IDs into vectors. Understanding lookup shapes connects Python indexing to trainable representation learning and prevents confusing arbitrary token numbers with meaningful numerical distances between words."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write embed(table, ids). Return a float NumPy array selecting rows in ids order. IDs is a flat integer list; reject negative IDs and IDs >= row count with ValueError. Empty IDs returns shape (0, embedding_dimension).",
+      "starter": "import numpy as np\n\ndef embed(table, ids):\n    pass",
+      "solution": "import numpy as np\n\ndef embed(table, ids):\n    t=np.asarray(table,dtype=float)\n    indices=np.asarray(ids,dtype=int)\n    if np.any(indices<0) or np.any(indices>=len(t)):\n        raise ValueError(\"Token ID outside vocabulary\")\n    return t[indices]",
+      "solutionExplanation": "Validate ID bounds before indexing so negative IDs cannot silently select the last row. The sequence requests row two, row one, and row two again, producing three two-dimensional vectors. The integer token IDs are indices, not numerical features to average directly. Repetition is preserved because the sequence\u2019s order and frequency carry information, while the table shares the same learned vector for every occurrence of a token.",
+      "tests": [
+        {
+          "name": "Repeated IDs",
+          "code": "assert np.array_equal(embed([[0,0],[1,2],[3,4]],[2,1,2]),[[3,4],[1,2],[3,4]])",
+          "explanation": "Lookup preserves sequence order and duplicates."
+        },
+        {
+          "name": "Empty sequence",
+          "code": "assert embed([[1,2]],[]).shape==(0,2)",
+          "explanation": "Empty token sequences still retain embedding width."
+        },
+        {
+          "name": "No negative indexing",
+          "code": "try:\n    embed([[1,2]],[-1])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Negative token ID must fail\")",
+          "explanation": "Python negative-index semantics are not valid unknown-token handling."
+        }
+      ],
+      "hints": [
+        "Convert the table to a float array and IDs to an integer index array.",
+        "Validate ID bounds before indexing so negative IDs cannot silently select the last row."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Treating integer token IDs as distances imposes arbitrary vocabulary ordering.",
+      "Random embeddings should not be described as meaningful semantic vectors."
+    ],
+    "xp": 20,
+    "tags": [
+      "embeddings",
+      "tensors",
+      "tokenization"
+    ]
+  },
+  {
+    "id": "deep-attention",
+    "module": "deep",
+    "section": "Training reliable networks",
+    "title": "Compute scaled dot-product attention",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-embeddings"
+    ],
+    "objectives": [
+      "Explain compute scaled dot-product attention using concrete array shapes.",
+      "Write attention(Q, K, V) returning (output, weights) as NumPy arrays."
+    ],
+    "explanation": "Attention creates a weighted mixture of value vectors based on how query vectors match key vectors. With Q shaped (queries, d), K shaped (tokens, d), and V shaped (tokens, value_width), the scores are Q @ K.T / sqrt(d). A row-wise softmax converts each query\u2019s scores into nonnegative weights that sum to one. Multiplying those weights by V produces one contextual output per query.\n\nThe scale factor controls score magnitude as the key dimension grows, helping avoid overly saturated softmax distributions. Subtract each row\u2019s maximum before exponentiation for numerical stability. Attention weights depend on the learned representations and should not automatically be interpreted as faithful explanations of a model\u2019s reasoning. Self-attention derives Q, K, and V from the same token sequence through different projections. This lesson uses supplied arrays so the retrieval-like weighting operation is visible before introducing a full transformer block.",
+    "why": "Attention is the central operation behind transformers and has a useful connection to retrieval: compare a query with candidate keys, normalize relevance scores, and combine their values. Implementing it makes the shapes and numerical stability requirements concrete.",
+    "example": {
+      "code": "import numpy as np\nscores = np.array([[1.,2.,0.]])\nweights = np.exp(scores-scores.max(axis=1,keepdims=True))\nweights /= weights.sum(axis=1,keepdims=True)\nvalues = np.array([[1.,0.],[0.,1.],[1.,1.]])\nprint(weights @ values)",
+      "explanation": "The softmax is applied across the three candidate tokens for one query. Subtracting the row maximum leaves relative probabilities unchanged while limiting exponent magnitudes. The final multiplication forms a weighted average of value rows, so the output width comes from the values rather than from the number of candidate tokens."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Along which axis should a query\u2019s attention scores normalize?",
+      "options": [
+        "Across candidate keys for that query",
+        "Across unrelated batch examples",
+        "Across the value coordinates"
+      ],
+      "answer": "Across candidate keys for that query",
+      "explanation": "Attention is the central operation behind transformers and has a useful connection to retrieval: compare a query with candidate keys, normalize relevance scores, and combine their values. Implementing it makes the shapes and numerical stability requirements concrete."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write attention(Q, K, V) returning (output, weights) as NumPy arrays. Use scaled dot-product scores and stable row-wise softmax. Inputs are nonempty compatible 2-D arrays, and Q/K share positive width d.",
+      "starter": "import numpy as np\n\ndef attention(Q, K, V):\n    pass",
+      "solution": "import numpy as np\n\ndef attention(Q, K, V):\n    Q=np.asarray(Q,dtype=float); K=np.asarray(K,dtype=float); V=np.asarray(V,dtype=float)\n    scores=Q@K.T/np.sqrt(Q.shape[1])\n    weights=np.exp(scores-scores.max(axis=1,keepdims=True))\n    weights/=weights.sum(axis=1,keepdims=True)\n    return weights@V,weights",
+      "solutionExplanation": "Subtract each score row\u2019s maximum, exponentiate, normalize each row, then multiply by V. The softmax is applied across the three candidate tokens for one query. Subtracting the row maximum leaves relative probabilities unchanged while limiting exponent magnitudes. The final multiplication forms a weighted average of value rows, so the output width comes from the values rather than from the number of candidate tokens.",
+      "tests": [
+        {
+          "name": "Equal scores average values",
+          "code": "o,w=attention([[0,0]],[[1,0],[0,1]],[[2,4],[6,8]]); assert np.allclose(w,[[0.5,0.5]]) and np.allclose(o,[[4,6]])",
+          "explanation": "A query with equal scores distributes attention uniformly."
+        },
+        {
+          "name": "Rows normalize",
+          "code": "o,w=attention([[1,0],[0,1]],np.eye(2),np.eye(2)); assert o.shape==(2,2) and np.allclose(w.sum(axis=1),1)",
+          "explanation": "Each query has its own normalized distribution."
+        },
+        {
+          "name": "Stable large scores",
+          "code": "o,w=attention([[10000]],[[1],[2]],[[3],[7]]); assert np.isfinite(o).all() and np.isfinite(w).all() and np.allclose(o,[[7]])",
+          "explanation": "Subtracting row maxima prevents exponential overflow."
+        }
+      ],
+      "hints": [
+        "Compute Q @ K.T and divide by the square root of key width.",
+        "Subtract each score row\u2019s maximum, exponentiate, normalize each row, then multiply by V."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Normalizing over queries mixes unrelated attention distributions.",
+      "Attention weights are not automatically a faithful explanation of model reasoning."
+    ],
+    "xp": 20,
+    "tags": [
+      "attention",
+      "softmax",
+      "transformers"
+    ],
+    "visual": "attention"
+  },
+  {
+    "id": "deep-checkpoint-batches",
+    "module": "deep",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: pool masked token embeddings",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "deep-attention"
+    ],
+    "objectives": [
+      "Explain checkpoint: pool masked token embeddings using concrete array shapes.",
+      "Write masked_mean(table, ids, pad_id=0)."
+    ],
+    "explanation": "This checkpoint combines embedding lookup, batch shapes, masking, and aggregation. A batch of token sequences often contains padding so every sequence has the same length. Mean pooling should average only real token vectors, excluding the padding positions. Otherwise the representation depends on how much padding was added rather than solely on the document\u2019s content.\n\nYou will receive an embedding table, a rectangular batch of token IDs, and a padding ID. Look up vectors, zero their contributions at padding positions, and divide each row\u2019s sum by its count of nonpadding tokens. An all-padding sequence returns a zero vector by explicit convention. This is a simple document representation, not a contextual transformer embedding: token vectors do not change based on neighboring tokens. It is nevertheless a useful shape and masking exercise, and the same masking discipline matters in attention, losses, and batched evaluation.",
+    "why": "AI applications often pool token representations into one vector per document. Ignoring padding is essential for consistency across different batch compositions, and a deterministic all-padding policy keeps empty documents from creating NaNs that later break similarity search or classification.",
+    "example": {
+      "code": "import numpy as np\nvectors = np.array([[1.,2.],[3.,4.],[0.,0.]])\nmask = np.array([1.,1.,0.])\npooled = (vectors*mask[:,None]).sum(axis=0)/mask.sum()\nprint(pooled)  # [2.0, 3.0]",
+      "explanation": "The mask is expanded with a singleton feature axis so each token\u2019s entire vector is included or excluded together. Summing across token positions produces one feature vector, and dividing by the count of real tokens computes the intended mean. Dividing by the padded sequence length would shrink shorter documents unnecessarily."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What should divide a masked mean-pooled embedding?",
+      "options": [
+        "Number of nonpadding tokens",
+        "Padded sequence length regardless of mask",
+        "Embedding dimension"
+      ],
+      "answer": "Number of nonpadding tokens",
+      "explanation": "AI applications often pool token representations into one vector per document. Ignoring padding is essential for consistency across different batch compositions, and a deterministic all-padding policy keeps empty documents from creating NaNs that later break similarity search or classification."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write masked_mean(table, ids, pad_id=0). IDs is a nonempty rectangular 2-D batch of valid token IDs. Return shape (batch, embedding_dimension), averaging only IDs unequal to pad_id. All-padding rows must be zero vectors.",
+      "starter": "import numpy as np\n\ndef masked_mean(table, ids, pad_id=0):\n    pass",
+      "solution": "import numpy as np\n\ndef masked_mean(table, ids, pad_id=0):\n    t=np.asarray(table,dtype=float); ix=np.asarray(ids,dtype=int)\n    mask=ix!=pad_id\n    total=(t[ix]*mask[:,:,None]).sum(axis=1)\n    count=np.maximum(mask.sum(axis=1,keepdims=True),1)\n    return total/count",
+      "solutionExplanation": "Sum masked embeddings across token positions, then divide by per-row counts clamped to at least one. The mask is expanded with a singleton feature axis so each token\u2019s entire vector is included or excluded together. Summing across token positions produces one feature vector, and dividing by the count of real tokens computes the intended mean. Dividing by the padded sequence length would shrink shorter documents unnecessarily.",
+      "tests": [
+        {
+          "name": "Ignore padding vector",
+          "code": "assert np.allclose(masked_mean([[99,99],[1,2],[3,4]],[[1,2,0]]),[[2,3]])",
+          "explanation": "Padding must be excluded even when its embedding is nonzero."
+        },
+        {
+          "name": "All padding",
+          "code": "assert np.array_equal(masked_mean([[9,9],[1,2]],[[0,0]]),[[0,0]])",
+          "explanation": "All-padding sequences require a finite declared result."
+        },
+        {
+          "name": "Different sequence lengths",
+          "code": "assert np.allclose(masked_mean([[0,0],[2,4],[6,8]],[[1,0],[1,2]]),[[2,4],[4,6]])",
+          "explanation": "Each row needs its own nonpadding count."
+        }
+      ],
+      "hints": [
+        "Lookup produces shape (batch, tokens, dimensions); expand the mask along dimensions.",
+        "Sum masked embeddings across token positions, then divide by per-row counts clamped to at least one."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Assuming the padding vector is zero couples correctness to a fragile initialization detail.",
+      "Calling this mean-pooling exercise a contextual transformer would overstate what it computes."
+    ],
+    "xp": 50,
+    "tags": [
+      "checkpoint",
+      "embeddings",
+      "masking"
+    ]
+  },
+  {
+    "id": "deep-transformer-block",
+    "module": "deep",
+    "section": "Transformer foundations",
+    "title": "Understand residuals and transformer blocks",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "deep-checkpoint-batches"
+    ],
+    "objectives": [
+      "Explain understand residuals and transformer blocks using concrete array shapes.",
+      "Write residual_norm(x, update, eps=1e-5)."
+    ],
+    "explanation": "A transformer block combines attention with a position-wise feed-forward network, residual connections, and normalization. Attention mixes information across token positions; the feed-forward sublayer transforms each token\u2019s feature vector independently. A residual connection adds a sublayer\u2019s output to its input, preserving a direct information and gradient path. This addition requires compatible shapes, often achieved with a learned output projection.\n\nLayer normalization standardizes features within each token, unlike batch normalization, which uses statistics across examples. In a pre-normalization block, normalization occurs before attention or the feed-forward sublayer; other architectures use different ordering. Positional information is also necessary because content-only self-attention does not inherently encode sequence order. This lesson implements only a residual plus layer-normalization operation, clearly separating that component from a complete transformer. The browser\u2019s NumPy exercises teach the underlying arithmetic, while realistic PyTorch transformer training belongs in a local or hosted notebook with suitable resources.",
+    "why": "Reading transformer code requires recognizing which operations mix tokens, which mix features, and which preserve a residual path. Implementing a small normalization component helps explain tensor axes and numerical stability without pretending a short exercise is a complete language model.",
+    "example": {
+      "code": "import numpy as np\nx = np.array([[1.,3.,5.]])\nmean = x.mean(axis=-1,keepdims=True)\nvariance = ((x-mean)**2).mean(axis=-1,keepdims=True)\nnormalized = (x-mean)/np.sqrt(variance+1e-5)\nprint(normalized)",
+      "explanation": "The statistics are computed across the last axis, so each token\u2019s feature vector is normalized independently. Keeping the reduced dimension allows subtraction and division to broadcast back over features. The small epsilon prevents division by zero for constant vectors. Learned scale and bias are omitted here to isolate the normalization arithmetic."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which transformer component mixes information across token positions?",
+      "options": [
+        "Self-attention",
+        "A position-wise feed-forward layer alone",
+        "A scalar bias alone"
+      ],
+      "answer": "Self-attention",
+      "explanation": "Reading transformer code requires recognizing which operations mix tokens, which mix features, and which preserve a residual path. Implementing a small normalization component helps explain tensor axes and numerical stability without pretending a short exercise is a complete language model."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Write residual_norm(x, update, eps=1e-5). Add equally shaped arrays, then normalize each last-axis feature vector using population variance and eps inside the square root. Return a NumPy array. Omit learned normalization scale and bias.",
+      "starter": "import numpy as np\n\ndef residual_norm(x, update, eps=1e-5):\n    pass",
+      "solution": "import numpy as np\n\ndef residual_norm(x, update, eps=1e-5):\n    z=np.asarray(x,dtype=float)+np.asarray(update,dtype=float)\n    mean=z.mean(axis=-1,keepdims=True)\n    variance=((z-mean)**2).mean(axis=-1,keepdims=True)\n    return (z-mean)/np.sqrt(variance+eps)",
+      "solutionExplanation": "Use axis=-1 and keepdims=True for mean and variance, with eps inside sqrt. The statistics are computed across the last axis, so each token\u2019s feature vector is normalized independently. Keeping the reduced dimension allows subtraction and division to broadcast back over features. The small epsilon prevents division by zero for constant vectors. Learned scale and bias are omitted here to isolate the normalization arithmetic.",
+      "tests": [
+        {
+          "name": "Per-token mean",
+          "code": "r=residual_norm([[1,3],[10,20]],[[1,1],[0,0]]); assert np.allclose(r.mean(axis=-1),0) and r.shape==(2,2)",
+          "explanation": "Normalization must operate over each token\u2019s features."
+        },
+        {
+          "name": "Constant features",
+          "code": "assert np.array_equal(residual_norm([[2,2]],[[1,1]]),[[0,0]])",
+          "explanation": "Epsilon makes zero-variance normalization finite."
+        },
+        {
+          "name": "Residual included",
+          "code": "a=residual_norm([[1,2,3]],[[0,3,0]]); b=residual_norm([[1,5,3]],[[0,0,0]]); assert np.allclose(a,b)",
+          "explanation": "The update is added before the specified normalization."
+        }
+      ],
+      "hints": [
+        "First add x and update; then compute statistics on the sum.",
+        "Use axis=-1 and keepdims=True for mean and variance, with eps inside sqrt."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Normalizing across batch examples is not layer normalization.",
+      "A residual-normalization function is one component, not a complete transformer."
+    ],
+    "xp": 20,
+    "tags": [
+      "transformers",
+      "residuals",
+      "layer-normalization"
+    ],
+    "visual": "attention"
+  },
+  {
+    "id": "deep-project-forward",
+    "module": "deep",
+    "section": "Tiny neural network project",
+    "title": "Neural network project \u00b7 1. Wire the model",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "deep-transformer-block"
+    ],
+    "objectives": [
+      "Explain neural network project \u00b7 1. wire the model using concrete array shapes.",
+      "Write network_forward(X, state) returning (hidden, probabilities)."
+    ],
+    "explanation": "The capstone trains a small network on XOR, a four-row binary problem that a single linear decision boundary cannot solve. Inputs are two binary features; the target is one when exactly one feature is one. The network uses four tanh hidden units and a sigmoid output, giving it nonlinear capacity while keeping every operation small enough to inspect.\n\nThe first milestone implements the forward pass from an explicit parameter dictionary. W1 has shape (2, 4), b1 has shape (4,), W2 has shape (4, 1), and b2 has shape (1,). Return both hidden activations and probabilities because the next milestone will reuse them for gradients. This is a pedagogical dataset, not evidence of real-world generalization. Its role is to verify that a complete neural training procedure can learn a known nonlinear pattern and that the reported loss comes from actual numerical computation.",
+    "why": "Implementing a tiny nonlinear model end to end connects tensor shapes, activations, probabilities, and later gradients. A controlled XOR task makes it possible to verify learning behavior without hiding errors behind a large dataset or a complex library training interface.",
+    "example": {
+      "code": "import numpy as np\nX = np.array([[0.,0.],[0.,1.],[1.,0.],[1.,1.]])\ny = np.array([[0.],[1.],[1.],[0.]])\nprint(X.shape, y.shape)\n# Four examples with two input features and one target each.",
+      "explanation": "The labels alternate in a way that cannot be separated by one straight line in the two-feature plane. Keeping targets shaped (4,1) matches the network\u2019s one-output-per-example probabilities and avoids accidental broadcasting against a flat target vector. Hidden nonlinear features will provide the representation needed to solve the pattern."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why does this XOR model need a nonlinear hidden activation?",
+      "options": [
+        "A single linear boundary cannot separate XOR",
+        "The dataset has too many rows for a linear model",
+        "Sigmoid probabilities can never represent binary labels"
+      ],
+      "answer": "A single linear boundary cannot separate XOR",
+      "explanation": "Implementing a tiny nonlinear model end to end connects tensor shapes, activations, probabilities, and later gradients. A controlled XOR task makes it possible to verify learning behavior without hiding errors behind a large dataset or a complex library training interface."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Write network_forward(X, state) returning (hidden, probabilities). Use tanh(X @ W1 + b1), then sigmoid(hidden @ W2 + b2). Clip logits to [-500,500] before exponentiation for this exercise. State uses the four keys described above.",
+      "starter": "import numpy as np\n\ndef network_forward(X, state):\n    pass",
+      "solution": "import numpy as np\n\ndef network_forward(X, state):\n    X=np.asarray(X,dtype=float)\n    h=np.tanh(X@state[\"W1\"]+state[\"b1\"])\n    logits=h@state[\"W2\"]+state[\"b2\"]\n    p=1/(1+np.exp(-np.clip(logits,-500,500)))\n    return h,p\n",
+      "solutionExplanation": "Apply the sigmoid to clipped logits and return both arrays without flattening the output. The labels alternate in a way that cannot be separated by one straight line in the two-feature plane. Keeping targets shaped (4,1) matches the network\u2019s one-output-per-example probabilities and avoids accidental broadcasting against a flat target vector. Hidden nonlinear features will provide the representation needed to solve the pattern.",
+      "tests": [
+        {
+          "name": "Zero parameters",
+          "code": "s={\"W1\":np.zeros((2,4)),\"b1\":np.zeros(4),\"W2\":np.zeros((4,1)),\"b2\":np.zeros(1)}; h,p=network_forward([[0,1],[1,0]],s); assert h.shape==(2,4) and np.allclose(p,0.5)",
+          "explanation": "Zero logits must produce one-half probabilities."
+        },
+        {
+          "name": "Output bias",
+          "code": "s={\"W1\":np.zeros((2,4)),\"b1\":np.zeros(4),\"W2\":np.zeros((4,1)),\"b2\":np.array([2.])}; h,p=network_forward([[0,0]],s); assert np.allclose(p,[[1/(1+np.exp(-2))]])",
+          "explanation": "The output bias must affect the sigmoid score."
+        },
+        {
+          "name": "Extreme finite output",
+          "code": "s={\"W1\":np.zeros((2,4)),\"b1\":np.zeros(4),\"W2\":np.zeros((4,1)),\"b2\":np.array([-10000.])}; h,p=network_forward([[0,0]],s); assert np.isfinite(p).all() and 0<=p[0,0]<1e-100",
+          "explanation": "Clipping avoids overflow while preserving an extreme probability."
+        }
+      ],
+      "hints": [
+        "Compute and keep the tanh hidden array before the output affine operation.",
+        "Apply the sigmoid to clipped logits and return both arrays without flattening the output."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "A flat target vector can broadcast incorrectly against column probabilities.",
+      "Initializing every hidden weight identically prevents units from learning distinct features."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "neural-networks",
+      "forward-pass"
+    ],
+    "project": {
+      "id": "deep-capstone",
+      "title": "Train a tiny neural network",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "deep-project-backward",
+    "module": "deep",
+    "section": "Tiny neural network project",
+    "title": "Neural network project \u00b7 2. Backpropagate the loss",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "deep-project-forward"
+    ],
+    "objectives": [
+      "Explain neural network project \u00b7 2. backpropagate the loss using concrete array shapes.",
+      "Write network_gradients(X, y, state), using the supplied network_forward."
+    ],
+    "explanation": "The second milestone differentiates mean binary cross-entropy for the XOR network. When sigmoid probabilities are paired with binary cross-entropy, the derivative with respect to each output logit simplifies to (probability-target)/batch_size. This cancellation avoids separately multiplying a fragile probability-space derivative by the sigmoid derivative. It is the same principle behind stable fused loss functions in deep-learning libraries.\n\nUse that logit derivative to compute W2 and b2 gradients, then propagate through W2 into the hidden activations. Multiply by 1-hidden^2 for the tanh derivative before calculating W1 and b1 gradients. All gradients must use the current, unchanged parameter state. The provided forward helper keeps this milestone focused on backpropagation. The tests compare analytical derivatives with finite differences on moderate logits, where clipping is inactive, giving independent evidence that the implemented gradient matches the stated objective.",
+    "why": "Custom neural training becomes trustworthy when gradients are checked independently rather than inferred from a decreasing loss alone. This milestone exposes the full backward path and the mean-loss convention so later optimizer updates can be audited parameter by parameter.",
+    "example": {
+      "code": "import numpy as np\nprobabilities = np.array([[0.7],[0.2]])\ntargets = np.array([[1.],[0.]])\ndlogits = (probabilities-targets)/len(targets)\nprint(dlogits)  # [[-0.15], [0.10]]",
+      "explanation": "The positive example\u2019s probability is too low, so its logit derivative is negative and gradient descent will tend to raise that score. The negative example\u2019s probability is too high, producing a positive derivative. Dividing by two matches the mean binary cross-entropy across the batch rather than a summed objective."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which factor differentiates a tanh hidden activation h?",
+      "options": [
+        "1 - h*h",
+        "h*(1-h)",
+        "1 for every h"
+      ],
+      "answer": "1 - h*h",
+      "explanation": "Custom neural training becomes trustworthy when gradients are checked independently rather than inferred from a decreasing loss alone. This milestone exposes the full backward path and the mean-loss convention so later optimizer updates can be audited parameter by parameter."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Write network_gradients(X, y, state), using the supplied network_forward. Return a dict of NumPy gradients for W1, b1, W2, b2 under mean binary cross-entropy. X is nonempty and y can be flat or a column. Do not mutate state.",
+      "starter": "import numpy as np\n\ndef network_forward(X, state):\n    X=np.asarray(X,dtype=float)\n    h=np.tanh(X@state[\"W1\"]+state[\"b1\"])\n    logits=h@state[\"W2\"]+state[\"b2\"]\n    p=1/(1+np.exp(-np.clip(logits,-500,500)))\n    return h,p\n\ndef network_gradients(X, y, state):\n    pass",
+      "solution": "import numpy as np\n\ndef network_forward(X, state):\n    X=np.asarray(X,dtype=float)\n    h=np.tanh(X@state[\"W1\"]+state[\"b1\"])\n    logits=h@state[\"W2\"]+state[\"b2\"]\n    p=1/(1+np.exp(-np.clip(logits,-500,500)))\n    return h,p\n\ndef network_gradients(X, y, state):\n    X=np.asarray(X,dtype=float); y=np.asarray(y,dtype=float).reshape(-1,1)\n    h,p=network_forward(X,state)\n    dz=(p-y)/len(X)\n    dh=(dz@state[\"W2\"].T)*(1-h*h)\n    return {\"W1\":X.T@dh,\"b1\":dh.sum(axis=0),\"W2\":h.T@dz,\"b2\":dz.sum(axis=0)}\n",
+      "solutionExplanation": "Use h.T@dz for W2, sum for b2, then (dz@W2.T)*(1-h*h) for the hidden pre-activation gradient. The positive example\u2019s probability is too low, so its logit derivative is negative and gradient descent will tend to raise that score. The negative example\u2019s probability is too high, producing a positive derivative. Dividing by two matches the mean binary cross-entropy across the batch rather than a summed objective.",
+      "tests": [
+        {
+          "name": "Gradient shapes",
+          "code": "s={\"W1\":np.ones((2,4))*0.1,\"b1\":np.zeros(4),\"W2\":np.ones((4,1))*0.2,\"b2\":np.zeros(1)}; g=network_gradients([[0,1],[1,0]],[1,0],s); assert all(g[k].shape==s[k].shape for k in s)",
+          "explanation": "Every parameter needs a same-shaped gradient."
+        },
+        {
+          "name": "Output-bias gradient",
+          "code": "s={\"W1\":np.zeros((2,4)),\"b1\":np.zeros(4),\"W2\":np.zeros((4,1)),\"b2\":np.zeros(1)}; g=network_gradients([[0,1],[1,0]],[1,1],s); assert np.allclose(g[\"b2\"],[-0.5]) and np.allclose(g[\"W1\"],0)",
+          "explanation": "The mean logit derivative and blocked hidden path have known values."
+        },
+        {
+          "name": "Numerical W1 check",
+          "code": "s={\"W1\":np.ones((2,4))*0.1,\"b1\":np.zeros(4),\"W2\":np.ones((4,1))*0.2,\"b2\":np.zeros(1)}; X=np.array([[1.,0.],[0.,1.]]); y=np.array([[1.],[0.]]); g=network_gradients(X,y,s); e=1e-5; a={k:v.copy() for k,v in s.items()}; b={k:v.copy() for k,v in s.items()}; a[\"W1\"][0,0]+=e; b[\"W1\"][0,0]-=e; pa=network_forward(X,a)[1]; pb=network_forward(X,b)[1]; la=-np.mean(y*np.log(pa)+(1-y)*np.log(1-pa)); lb=-np.mean(y*np.log(pb)+(1-y)*np.log(1-pb)); assert abs(g[\"W1\"][0,0]-(la-lb)/(2*e))<1e-6",
+          "explanation": "A numerical derivative independently checks the full chain to an early weight."
+        }
+      ],
+      "hints": [
+        "Start with dz=(probabilities-targets)/batch size; reshape targets to a column.",
+        "Use h.T@dz for W2, sum for b2, then (dz@W2.T)*(1-h*h) for the hidden pre-activation gradient."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Averaging again after dz divides by batch size twice.",
+      "Updating W2 before computing hidden gradients uses inconsistent parameter states."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "backpropagation",
+      "gradient-check"
+    ],
+    "project": {
+      "id": "deep-capstone",
+      "title": "Train a tiny neural network",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "deep-project-train",
+    "module": "deep",
+    "section": "Tiny neural network project",
+    "title": "Neural network project \u00b7 3. Train and measure XOR",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "deep-project-backward"
+    ],
+    "objectives": [
+      "Explain neural network project \u00b7 3. train and measure xor using concrete array shapes.",
+      "Write train_xor(steps=1000, rate=0."
+    ],
+    "explanation": "The final milestone runs the complete network: initialize distinct hidden weights, compute probabilities, evaluate binary cross-entropy, backpropagate, and update every parameter. Use a seeded random generator for reproducible initial weights and preserve a loss history that includes the initial value and one measurement after each update. The final report should contain actual probabilities and fitted parameters, not a hardcoded XOR answer.\n\nThe supplied forward and backward helpers let you focus on training orchestration. A small constant learning rate works for this controlled example, but learning behavior still depends on initialization and settings. The tests verify that the stated seed learns the pattern and that zero steps preserves the initial state. This demonstration fits and evaluates the same four-row truth table, so its accuracy is a functional learning check, not a generalization estimate. The downloadable PyTorch version implements the same experiment locally with real autograd; the browser executes the NumPy version only.",
+    "why": "Finishing a real training loop establishes the practical bridge from mathematical derivatives to an executable neural model. Reproducible initialization, genuine loss measurements, and explicit runtime boundaries make it possible to compare the browser implementation with a local PyTorch experiment honestly.",
+    "example": {
+      "code": "import numpy as np\np=np.array([[0.1],[0.9]])\ny=np.array([[0.],[1.]])\nclipped=np.clip(p,1e-12,1-1e-12)\nloss=-np.mean(y*np.log(clipped)+(1-y)*np.log(1-clipped))\nprint(float(loss))",
+      "explanation": "Binary cross-entropy rewards the probability assigned to the correct class for each example. Clipping prevents logarithms of zero in the reporting calculation. A lower loss means the model assigns more probability to the supplied labels, but evaluating those same labels used for fitting does not establish performance on unrelated real-world documents."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which claim is justified after the network fits all four XOR rows?",
+      "options": [
+        "This implementation learned the controlled XOR fixture",
+        "The model generalizes to real document classification",
+        "PyTorch ran inside the browser"
+      ],
+      "answer": "This implementation learned the controlled XOR fixture",
+      "explanation": "Finishing a real training loop establishes the practical bridge from mathematical derivatives to an executable neural model. Reproducible initialization, genuine loss measurements, and explicit runtime boundaries make it possible to compare the browser implementation with a local PyTorch experiment honestly."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Write train_xor(steps=1000, rate=0.8, seed=7). Use provided init_state, network_forward, and network_gradients on the four XOR rows. Return {\"state\": parameter dict, \"probabilities\": NumPy array, \"losses\": list}. Record initial and post-update clipped binary cross-entropy. Update all parameters with gradient descent; support zero steps.",
+      "starter": "import numpy as np\n\ndef network_forward(X, state):\n    X=np.asarray(X,dtype=float)\n    h=np.tanh(X@state[\"W1\"]+state[\"b1\"])\n    logits=h@state[\"W2\"]+state[\"b2\"]\n    p=1/(1+np.exp(-np.clip(logits,-500,500)))\n    return h,p\n\ndef network_gradients(X, y, state):\n    X=np.asarray(X,dtype=float); y=np.asarray(y,dtype=float).reshape(-1,1)\n    h,p=network_forward(X,state)\n    dz=(p-y)/len(X)\n    dh=(dz@state[\"W2\"].T)*(1-h*h)\n    return {\"W1\":X.T@dh,\"b1\":dh.sum(axis=0),\"W2\":h.T@dz,\"b2\":dz.sum(axis=0)}\n\ndef init_state(seed=7):\n    rng=np.random.default_rng(seed)\n    return {\"W1\":rng.normal(0,1,(2,4)),\"b1\":np.zeros(4),\"W2\":rng.normal(0,1,(4,1)),\"b2\":np.zeros(1)}\n\ndef train_xor(steps=1000, rate=0.8, seed=7):\n    pass",
+      "solution": "import numpy as np\n\ndef network_forward(X, state):\n    X=np.asarray(X,dtype=float)\n    h=np.tanh(X@state[\"W1\"]+state[\"b1\"])\n    logits=h@state[\"W2\"]+state[\"b2\"]\n    p=1/(1+np.exp(-np.clip(logits,-500,500)))\n    return h,p\n\ndef network_gradients(X, y, state):\n    X=np.asarray(X,dtype=float); y=np.asarray(y,dtype=float).reshape(-1,1)\n    h,p=network_forward(X,state)\n    dz=(p-y)/len(X)\n    dh=(dz@state[\"W2\"].T)*(1-h*h)\n    return {\"W1\":X.T@dh,\"b1\":dh.sum(axis=0),\"W2\":h.T@dz,\"b2\":dz.sum(axis=0)}\n\ndef init_state(seed=7):\n    rng=np.random.default_rng(seed)\n    return {\"W1\":rng.normal(0,1,(2,4)),\"b1\":np.zeros(4),\"W2\":rng.normal(0,1,(4,1)),\"b2\":np.zeros(1)}\n\ndef train_xor(steps=1000, rate=0.8, seed=7):\n    X=np.array([[0.,0.],[0.,1.],[1.,0.],[1.,1.]])\n    y=np.array([[0.],[1.],[1.],[0.]])\n    state=init_state(seed)\n    def loss():\n        p=np.clip(network_forward(X,state)[1],1e-12,1-1e-12)\n        return float(-np.mean(y*np.log(p)+(1-y)*np.log(1-p)))\n    losses=[loss()]\n    for _ in range(steps):\n        grads=network_gradients(X,y,state)\n        state={k:v-rate*grads[k] for k,v in state.items()}\n        losses.append(loss())\n    return {\"state\":state,\"probabilities\":network_forward(X,state)[1],\"losses\":losses}\n",
+      "solutionExplanation": "Compute the entire gradients dictionary before replacing any parameters, then record the updated loss. Binary cross-entropy rewards the probability assigned to the correct class for each example. Clipping prevents logarithms of zero in the reporting calculation. A lower loss means the model assigns more probability to the supplied labels, but evaluating those same labels used for fitting does not establish performance on unrelated real-world documents.",
+      "tests": [
+        {
+          "name": "Learns nonlinear fixture",
+          "code": "r=train_xor(); assert np.array_equal((r[\"probabilities\"]>=0.5).astype(int).ravel(),[0,1,1,0]) and r[\"losses\"][-1]<0.03",
+          "explanation": "Real gradient updates must learn the controlled nonlinear truth table."
+        },
+        {
+          "name": "History contract",
+          "code": "r=train_xor(steps=3); assert len(r[\"losses\"])==4 and np.isfinite(r[\"losses\"]).all()",
+          "explanation": "Loss history includes initialization and every completed update."
+        },
+        {
+          "name": "Zero-step preservation",
+          "code": "r=train_xor(steps=0); s=init_state(7); assert all(np.array_equal(r[\"state\"][k],s[k]) for k in s) and len(r[\"losses\"])==1",
+          "explanation": "The result must come from the requested training process rather than a fixed answer."
+        }
+      ],
+      "hints": [
+        "Define a loss helper that calls the current forward pass and clips probabilities only for logarithms.",
+        "Compute the entire gradients dictionary before replacing any parameters, then record the updated loss."
+      ],
+      "packages": [
+        "numpy"
+      ]
+    },
+    "mistakes": [
+      "Hardcoding the truth table bypasses the learning objective and fails process checks.",
+      "A training-fixture score is not evidence of held-out generalization."
+    ],
+    "xp": 80,
+    "tags": [
+      "project",
+      "training-loops",
+      "pytorch"
+    ],
+    "localCode": "# Local only: python -m pip install torch\nimport torch\nfrom torch import nn\ntorch.manual_seed(7)\nX=torch.tensor([[0.,0.],[0.,1.],[1.,0.],[1.,1.]])\ny=torch.tensor([[0.],[1.],[1.],[0.]])\nmodel=nn.Sequential(nn.Linear(2,4),nn.Tanh(),nn.Linear(4,1))\noptimizer=torch.optim.Adam(model.parameters(),lr=0.05)\nloss_fn=nn.BCEWithLogitsLoss()\nfor epoch in range(1500):\n    model.train()\n    optimizer.zero_grad()\n    logits=model(X)\n    loss=loss_fn(logits,y)\n    loss.backward()\n    optimizer.step()\nmodel.eval()\nwith torch.no_grad():\n    probabilities=torch.sigmoid(model(X))\n    print(probabilities)\n    print((probabilities>=0.5).int())\n# XOR is a wiring/optimization demonstration, not a held-out quality estimate.\n",
+    "project": {
+      "id": "deep-capstone",
+      "title": "Train a tiny neural network",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

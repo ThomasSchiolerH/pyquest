@@ -1,0 +1,1305 @@
+[
+  {
+    "id": "production-api-contracts",
+    "module": "production",
+    "section": "Service foundations",
+    "title": "Design a typed AI API boundary",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain design a typed ai api boundary in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "An HTTP API turns application behavior into a contract clients can call. FastAPI maps routes to Python functions and commonly uses Pydantic models to validate request and response data. A request schema describes accepted fields and constraints; a response schema describes what callers can rely on. Validation belongs at the boundary before expensive model calls or document processing.\n\nSeparate transport concerns from core logic. A pure function can validate and normalize a small request in the browser, while a local FastAPI adapter translates HTTP requests and status codes. This separation supports tests without a running server. The browser exercise uses standard Python and does not execute FastAPI or Pydantic. A downloadable local capstone later demonstrates those libraries. Define strictness deliberately: automatic type coercion can be convenient but may hide invalid client behavior when a field must be a genuine integer.",
+    "why": "An AI backend should reject malformed requests before spending tokens or exposing confusing internal errors. Explicit request and response schemas provide stable integration contracts, while a separate pure service core makes behavior testable without network access or unsupported browser libraries.",
+    "example": {
+      "code": "request = {\"text\":\"  Hello  \",\"max_words\":20}\nnormalized = {\"text\":request[\"text\"].strip(),\"max_words\":request[\"max_words\"]}\nprint(normalized[\"text\"])",
+      "explanation": "Normalization is a deliberate transformation of accepted data, not permission to accept every input shape. The example assumes validation has already established a text field and integer limit. The exercise implements that boundary explicitly, mirroring the responsibility a Pydantic model would have in a locally executed FastAPI application."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Where should invalid requests be rejected?",
+      "options": [
+        "Before expensive processing",
+        "After returning success",
+        "Only in client JavaScript"
+      ],
+      "answer": "Before expensive processing",
+      "explanation": "Validate requests before expensive or side-effecting work begins."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement validate_request(data). Require exactly text and optional max_words. text is a nonblank string, stripped; max_words defaults to 50, exact int in 1..200. Return normalized dict; otherwise raise ValueError. This browser exercise does not execute FastAPI.",
+      "starter": "def validate_request(data):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def validate_request(data):\n    if not isinstance(data,dict) or set(data)-{\"text\",\"max_words\"}:\n        raise ValueError(\"Invalid fields\")\n    text, limit = data.get(\"text\"), data.get(\"max_words\",50)\n    if not isinstance(text,str) or not text.strip() or type(limit) is not int or not 1 <= limit <= 200:\n        raise ValueError(\"Invalid request\")\n    return {\"text\":text.strip(),\"max_words\":limit}\n",
+      "solutionExplanation": "Validate requests before expensive or side-effecting work begins. Check allowed keys, then exact types and bounds, then construct normalized output. Do not claim FastAPI ran in the browser when only its core contract was exercised.",
+      "tests": [
+        {
+          "name": "Valid",
+          "code": "assert validate_request({\"text\":\" hello \"}) == {\"text\":\"hello\",\"max_words\":50}",
+          "explanation": "Defaults and normalization are defined."
+        },
+        {
+          "name": "Empty",
+          "code": "try:\n    validate_request({\"text\":\" \"})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Blank text is rejected."
+        },
+        {
+          "name": "Strict type",
+          "code": "try:\n    validate_request({\"text\":\"hi\",\"max_words\":True})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Booleans are not integer limits."
+        }
+      ],
+      "hints": [
+        "Validate requests before expensive or side-effecting work begins.",
+        "Check allowed keys, then exact types and bounds, then construct normalized output."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not claim FastAPI ran in the browser when only its core contract was exercised.",
+      "Do not rely on client-side validation as the server boundary."
+    ],
+    "xp": 20,
+    "tags": [
+      "production",
+      "fastapi",
+      "pydantic",
+      "schemas"
+    ]
+  },
+  {
+    "id": "production-async-calls",
+    "module": "production",
+    "section": "Service foundations",
+    "title": "Coordinate asynchronous service calls",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-api-contracts"
+    ],
+    "objectives": [
+      "Explain coordinate asynchronous service calls in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Async Python lets a task yield while waiting for I/O so another task can make progress. It is useful for independent HTTP requests to model, retrieval, or storage services. It does not automatically make CPU-heavy code parallel. Blocking calls inside an async function can still stall the event loop, so use async-compatible clients and move expensive CPU work to an appropriate execution strategy.\n\nasyncio.gather schedules awaitables and returns results in input order, even when completion order differs. Define what should happen if one call fails: fail the whole request, collect exceptions, or return partial results under a documented contract. Limit concurrency to avoid overwhelming dependencies. The browser exercise uses awaitable test doubles instead of real network requests and provides a synchronous wrapper for the worker's Python execution environment. It demonstrates orchestration without claiming a live API call occurred.",
+    "why": "An AI endpoint may need retrieval and metadata from independent services. Concurrent I/O can reduce waiting, but explicit ordering and failure behavior are necessary to avoid mismatched results, hidden partial failures, or excessive load on rate-limited dependencies during traffic bursts.",
+    "example": {
+      "code": "import asyncio\nasync def value(x):\n    await asyncio.sleep(0)\n    return x * 2\nasync def main():\n    return await asyncio.gather(value(2),value(3))\nprint(asyncio.run(main()))",
+      "explanation": "Both coroutines yield once, allowing the event loop to coordinate them. gather preserves the order supplied by the caller, so returned values remain aligned with request ids. These are deterministic local awaitables, not HTTP calls, which makes scheduling behavior testable without an API key, external network, or a production server."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Does async automatically parallelize CPU-heavy Python work?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Async coordinates waiting; it does not automatically parallelize CPU-bound work."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement collect_values(values). Internally use asyncio.gather over an async helper that awaits asyncio.sleep(0) and returns x*2. Return results in input order through asyncio.run. No network calls. Empty values returns [].",
+      "starter": "def collect_values(values):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def collect_values(values):\n    import asyncio\n    async def one(value):\n        await asyncio.sleep(0)\n        return value*2\n    async def main():\n        return await asyncio.gather(*(one(value) for value in values))\n    return asyncio.run(main())\n",
+      "solutionExplanation": "Async coordinates waiting; it does not automatically parallelize CPU-bound work. Create awaitables, gather them in one async main function, then run that function. Do not use blocking HTTP clients inside an event loop unintentionally.",
+      "tests": [
+        {
+          "name": "Order",
+          "code": "assert collect_values([3,1,2]) == [6,2,4]",
+          "explanation": "Results retain input alignment."
+        },
+        {
+          "name": "Empty",
+          "code": "assert collect_values([]) == []",
+          "explanation": "No work yields an empty result."
+        },
+        {
+          "name": "Negative",
+          "code": "assert collect_values([-2,0]) == [-4,0]",
+          "explanation": "Local test doubles execute genuine Python."
+        }
+      ],
+      "hints": [
+        "Async coordinates waiting; it does not automatically parallelize CPU-bound work.",
+        "Create awaitables, gather them in one async main function, then run that function."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not use blocking HTTP clients inside an event loop unintentionally.",
+      "Do not describe local async test doubles as live model API calls."
+    ],
+    "xp": 20,
+    "tags": [
+      "production",
+      "async",
+      "concurrency"
+    ]
+  },
+  {
+    "id": "production-configuration",
+    "module": "production",
+    "section": "Service foundations",
+    "title": "Separate configuration from secrets",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-async-calls"
+    ],
+    "objectives": [
+      "Explain separate configuration from secrets in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Configuration controls behavior such as model name, timeout, and feature flags. Secrets grant access, such as API keys and database credentials. Both may arrive through environment variables, but they need different handling: secrets must not be committed, sent to browser bundles, or printed in ordinary logs. A public static frontend cannot safely hide a private provider key.\n\nParse configuration once at startup and fail clearly on invalid values. Environment variables are strings, so numeric limits need conversion and range checks. Defaults should be safe and documented, while required secrets should be checked for presence without exposing their values. Tests can supply a dictionary instead of reading the real process environment, making behavior deterministic. This lesson validates a small service configuration and returns only nonsecret settings plus a boolean indicating whether a key was configured.",
+    "why": "AI services need different settings in development and production without source edits. Central parsing catches invalid limits early, while keeping secret values out of returned configuration prevents accidental exposure through diagnostics, frontend assets, or progress exports used during debugging.",
+    "example": {
+      "code": "env = {\"TIMEOUT_SECONDS\":\"12\",\"MODEL_NAME\":\"simulated\"}\ntimeout = int(env.get(\"TIMEOUT_SECONDS\",\"10\"))\nprint(timeout)  # parsed numeric setting",
+      "explanation": "Environment-style values arrive as strings, so parsing establishes the type used by application logic. The example shows one nonsecret setting. The exercise adds bounds and secret-presence reporting while ensuring the key itself never appears in the returned object, keeping test fixtures independent of actual process credentials."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Can a private API key be hidden safely in a public Vite bundle?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "No",
+      "explanation": "A public frontend bundle cannot keep a provider API key secret."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement load_config(env). TIMEOUT_SECONDS defaults to \"10\", must parse as int in 1..120 or raise ValueError. MODEL_NAME defaults to \"simulated\". Return timeout,model,key_configured=bool(API_KEY). Never include the key value.",
+      "starter": "def load_config(env):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def load_config(env):\n    timeout = int(env.get(\"TIMEOUT_SECONDS\",\"10\"))\n    if not 1 <= timeout <= 120:\n        raise ValueError(\"Invalid timeout\")\n    return {\"timeout\":timeout,\"model\":env.get(\"MODEL_NAME\",\"simulated\"),\"key_configured\":bool(env.get(\"API_KEY\"))}\n",
+      "solutionExplanation": "A public frontend bundle cannot keep a provider API key secret. Parse and bound the timeout, and return only a boolean for secret presence. Do not commit real keys or place them in VITE_ environment variables.",
+      "tests": [
+        {
+          "name": "Defaults",
+          "code": "assert load_config({}) == {\"timeout\":10,\"model\":\"simulated\",\"key_configured\":False}",
+          "explanation": "Safe defaults are explicit."
+        },
+        {
+          "name": "Secret",
+          "code": "assert load_config({\"API_KEY\":\"private\"}) == {\"timeout\":10,\"model\":\"simulated\",\"key_configured\":True}",
+          "explanation": "Only presence is exposed."
+        },
+        {
+          "name": "Bounds",
+          "code": "try:\n    load_config({\"TIMEOUT_SECONDS\":\"0\"})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Invalid configuration fails early."
+        }
+      ],
+      "hints": [
+        "A public frontend bundle cannot keep a provider API key secret.",
+        "Parse and bound the timeout, and return only a boolean for secret presence."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not commit real keys or place them in VITE_ environment variables.",
+      "Do not print full environment dictionaries while diagnosing configuration."
+    ],
+    "xp": 20,
+    "tags": [
+      "production",
+      "configuration",
+      "secrets"
+    ]
+  },
+  {
+    "id": "production-errors-logging",
+    "module": "production",
+    "section": "Service foundations",
+    "title": "Return useful errors and safe logs",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-configuration"
+    ],
+    "objectives": [
+      "Explain return useful errors and safe logs in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Exception handling translates internal failures into a stable public contract. A validation error, rate limit, timeout, and unexpected defect should not all look like a successful response with different text. HTTP status codes and machine-readable error codes help clients decide whether to fix input, retry later, or report a service failure.\n\nLogs serve a different audience. Engineers may need exception type, request id, and stage, but callers should not receive raw stack traces containing implementation details or secrets. Use structured safe fields and preserve correlation ids across service boundaries. Avoid catching every exception and silently returning an empty result; that hides programming errors and corrupts evaluation data. Our exercise maps known error categories to public status and retryability, leaving unknown failures as generic internal errors. It does not pretend that an error message alone proves recovery succeeded.",
+    "why": "Reliable AI APIs need clients to distinguish invalid requests from temporary dependency failures. A stable error contract enables appropriate retries, while safe structured logs support investigation without exposing raw prompts, credentials, or internal tracebacks in public responses and monitoring dashboards.",
+    "example": {
+      "code": "error = {\"request_id\":\"r1\",\"code\":\"timeout\",\"status\":504}\nprint({key:error[key] for key in (\"request_id\",\"code\",\"status\")})",
+      "explanation": "The log record contains a correlation id and public-safe categories rather than a prompt or secret-bearing exception string. A client can interpret the status while an engineer locates related events by request id. The exercise formalizes category mapping and retryability, keeping internal diagnostics separate from the response contract."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Should unexpected exceptions be returned as successful empty answers?",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Unexpected failures should not masquerade as successful empty answers."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement error_response(kind). Map validation -> (400,False), rate_limit -> (429,True), timeout -> (504,True). Unknown kinds return (500,False). Return {\"status\":number,\"retryable\":bool,\"code\":kind if known else \"internal\"}.",
+      "starter": "def error_response(kind):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def error_response(kind):\n    known = {\"validation\":(400,False),\"rate_limit\":(429,True),\"timeout\":(504,True)}\n    status,retryable = known.get(kind,(500,False))\n    return {\"status\":status,\"retryable\":retryable,\"code\":kind if kind in known else \"internal\"}\n",
+      "solutionExplanation": "Unexpected failures should not masquerade as successful empty answers. Use a known-category mapping and a generic internal fallback. Do not expose raw tracebacks or secret-bearing exception text publicly.",
+      "tests": [
+        {
+          "name": "Validation",
+          "code": "assert error_response(\"validation\") == {\"status\":400,\"retryable\":False,\"code\":\"validation\"}",
+          "explanation": "Clients should repair invalid input."
+        },
+        {
+          "name": "Timeout",
+          "code": "assert error_response(\"timeout\")[\"retryable\"] is True",
+          "explanation": "Transient policy is explicit."
+        },
+        {
+          "name": "Unknown",
+          "code": "assert error_response(\"secret stack trace\") == {\"status\":500,\"retryable\":False,\"code\":\"internal\"}",
+          "explanation": "Unknown details are not reflected to clients."
+        }
+      ],
+      "hints": [
+        "Unexpected failures should not masquerade as successful empty answers.",
+        "Use a known-category mapping and a generic internal fallback."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not expose raw tracebacks or secret-bearing exception text publicly.",
+      "Do not mark a retryable category as proof that retrying a side effect is safe."
+    ],
+    "xp": 20,
+    "tags": [
+      "production",
+      "exceptions",
+      "logging"
+    ]
+  },
+  {
+    "id": "production-checkpoint-boundary",
+    "module": "production",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: validate an API request",
+    "minutes": 10,
+    "difficulty": "Foundation",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "production-errors-logging"
+    ],
+    "objectives": [
+      "Explain checkpoint: validate an api request in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The first production checkpoint joins request validation with a stable response envelope. A service should reject invalid input before calling its model adapter, then return a well-defined success object for accepted input. This exercise uses a simulated transformation so the boundary can be tested without an HTTP server or paid API.\n\nThe request contains text and a word limit. The successful response includes mode, output, and word_count. The error response includes an error code and no fabricated model output. Although a real FastAPI adapter would translate these outcomes into HTTP responses, the core function remains pure and browser-compatible. This separation is valuable because integration tests can focus on routing and serialization while unit tests cover most behavior quickly. The task combines normalization, strict bounds, deterministic processing, and truthful simulation labeling.",
+    "why": "An API boundary is only useful if invalid requests never reach expensive processing and valid responses keep a consistent shape. This integrated exercise verifies those properties with real Python execution, creating a service core that can later sit behind FastAPI without changing its behavior.",
+    "example": {
+      "code": "words = \"A small deterministic service\".split()\nresponse = {\"mode\":\"simulated\",\"output\":\" \".join(words[:2]),\"word_count\":2}\nprint(response[\"output\"])",
+      "explanation": "The output is a deterministic prefix rather than a language-model summary. Labeling it simulated prevents a misleading claim about intelligence or API execution. The checkpoint adds strict validation and an error envelope around this transformation, making it possible to test the service boundary without network transport or unsupported browser packages."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What must a deterministic word-prefix service be labeled?",
+      "options": [
+        "Simulated",
+        "Executed hosted LLM",
+        "Fine-tuned model"
+      ],
+      "answer": "Simulated",
+      "explanation": "A deterministic local transformation must be identified as simulated behavior."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement handle_request(data). Require dict with text nonblank string and optional exact-int max_words 1..200 (default 50); reject extra keys. Invalid input returns {\"error\":\"invalid_request\"}. Valid input returns {mode:\"simulated\",output:first N whitespace words joined,word_count:output count}.",
+      "starter": "def handle_request(data):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def handle_request(data):\n    if not isinstance(data,dict) or set(data)-{\"text\",\"max_words\"}:\n        return {\"error\":\"invalid_request\"}\n    text, limit = data.get(\"text\"), data.get(\"max_words\",50)\n    if not isinstance(text,str) or not text.strip() or type(limit) is not int or not 1 <= limit <= 200:\n        return {\"error\":\"invalid_request\"}\n    words = text.split()[:limit]\n    return {\"mode\":\"simulated\",\"output\":\" \".join(words),\"word_count\":len(words)}\n",
+      "solutionExplanation": "A deterministic local transformation must be identified as simulated behavior. Validate before splitting, then build either the error envelope or the explicit simulated success shape. Do not claim this browser task executes FastAPI or a real model.",
+      "tests": [
+        {
+          "name": "Success",
+          "code": "assert handle_request({\"text\":\" a b c \",\"max_words\":2}) == {\"mode\":\"simulated\",\"output\":\"a b\",\"word_count\":2}",
+          "explanation": "Output follows the accepted contract."
+        },
+        {
+          "name": "Invalid",
+          "code": "assert handle_request({\"text\":\"\"}) == {\"error\":\"invalid_request\"}",
+          "explanation": "Invalid input has no fabricated output."
+        },
+        {
+          "name": "Strict",
+          "code": "assert handle_request({\"text\":\"hi\",\"max_words\":True}) == {\"error\":\"invalid_request\"}",
+          "explanation": "Boolean limits are rejected."
+        }
+      ],
+      "hints": [
+        "A deterministic local transformation must be identified as simulated behavior.",
+        "Validate before splitting, then build either the error envelope or the explicit simulated success shape."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not claim this browser task executes FastAPI or a real model.",
+      "Do not return success for invalid requests."
+    ],
+    "xp": 50,
+    "tags": [
+      "production",
+      "schemas",
+      "testing"
+    ]
+  },
+  {
+    "id": "production-rate-limits",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Make rate limits explicit",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-checkpoint-boundary"
+    ],
+    "objectives": [
+      "Implement allow_request(timestamps, now, window, limit)",
+      "Explain the tradeoffs behind make rate limits explicit"
+    ],
+    "explanation": "A rate limiter is a policy for deciding how much work a caller may request in a period. A simple fixed window counts requests whose timestamps fall inside the current interval. It is easy to explain, but traffic can burst across a window boundary. Sliding windows and token buckets smooth that behavior at the cost of additional state. Decide whether a limit applies per user, per API key, or globally; those policies protect different resources.\n\nRejecting excess work should happen before expensive inference. Return a clear retry signal rather than pretending a rejected request succeeded. In production, concurrent workers need an atomic shared counter; an in-memory list is only an instructional model. This exercise implements an exact sliding-window decision on supplied timestamps. It excludes the old boundary and includes the present time, making the edge behavior testable without sleeping.",
+    "why": "In a real AI backend, make rate limits explicit affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "now = 60\n# This event is outside a ten-second window.\nprint(60 - 10 < 49 <= 60)\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "At now=10, window=5, which timestamps in [5,6,10,12] count as active?",
+      "options": [
+        "[5, 6, 10]",
+        "[6, 10]",
+        "[6, 10, 12]"
+      ],
+      "answer": "[6, 10]",
+      "explanation": "The active interval is 5 < t <= 10. The old boundary and future timestamp are excluded."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement allow_request(timestamps, now, window, limit). Return True when fewer than limit timestamps satisfy now-window < t <= now. Reject nonpositive window or limit with ValueError. Do not mutate timestamps.",
+      "starter": "def allow_request(timestamps, now, window, limit):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def allow_request(timestamps, now, window, limit):\n    if window <= 0 or limit <= 0:\n        raise ValueError(\"positive window and limit required\")\n    return sum(now-window < t <= now for t in timestamps) < limit\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: capacity",
+          "code": "assert allow_request([8],10,5,2) is True",
+          "explanation": "One active request leaves a free slot."
+        },
+        {
+          "name": "Case 2: boundary",
+          "code": "assert allow_request([5,6,10,12],10,5,2) is False",
+          "explanation": "Exclude the old boundary and future events."
+        },
+        {
+          "name": "Case 3: empty",
+          "code": "assert allow_request([],0,1,1) is True",
+          "explanation": "An empty history permits the first request."
+        }
+      ],
+      "hints": [
+        "Express the active interval as two comparisons.",
+        "Count the active events; compare that count with the limit."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "rate-limits",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-cache-keys",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Cache results without crossing user boundaries",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-rate-limits"
+    ],
+    "objectives": [
+      "Implement cache_key(tenant, model, payload)",
+      "Explain the tradeoffs behind cache results without crossing user boundaries"
+    ],
+    "explanation": "Caching reuses a previous result when the inputs that determine that result have not changed. For an AI response, the prompt alone rarely identifies those inputs. Model version, generation settings, retrieved document versions, and authorization scope can all affect the answer. A cache key must include the relevant context. If two users see different private documents, sharing an answer key across them can disclose data even when retrieval itself checks permissions.\n\nA time-to-live limits staleness but does not repair an incomplete key. Normalize structured inputs consistently before hashing them, and avoid putting secrets directly in readable keys or logs. A hash is an identifier, not encryption. The exercise builds a deterministic JSON-based key from a tenant, model, and payload. JSON key sorting makes logically identical dictionaries serialize identically; retaining the tenant makes the boundary explicit.",
+    "why": "In a real AI backend, cache results without crossing user boundaries affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "import json\n# Sorting is about stable representation, not secrecy.\nprint(json.dumps({\"b\": 2, \"a\": 1}, sort_keys=True))\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "A cache key based only on prompt text is sufficient when users can access different private documents.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Authorization scope changes which evidence a response may contain. Include tenant or permission context in the key."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement cache_key(tenant, model, payload). Return a SHA-256 hex digest of JSON for [tenant, model, payload], serialized with sort_keys=True and separators=(\",\", \":\"). Payload contains JSON-compatible values.",
+      "starter": "def cache_key(tenant, model, payload):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def cache_key(tenant, model, payload):\n    import hashlib, json\n    encoded = json.dumps([tenant, model, payload], sort_keys=True, separators=(\",\", \":\")).encode()\n    return hashlib.sha256(encoded).hexdigest()\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: stable",
+          "code": "assert cache_key(\"a\",\"m\",{\"x\":1,\"y\":2}) == cache_key(\"a\",\"m\",{\"y\":2,\"x\":1})",
+          "explanation": "Dictionary insertion order must not affect the key."
+        },
+        {
+          "name": "Case 2: tenant",
+          "code": "assert cache_key(\"a\",\"m\",{}) != cache_key(\"b\",\"m\",{})",
+          "explanation": "Different tenants must not share keys."
+        },
+        {
+          "name": "Case 3: digest",
+          "code": "assert len(cache_key(\"a\",\"m\",{})) == 64",
+          "explanation": "SHA-256 has a 64-character hexadecimal representation."
+        }
+      ],
+      "hints": [
+        "Serialize every input that influences the result.",
+        "Encode the canonical JSON as bytes before hashing."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "cache-keys",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-mocking",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Test the boundary with a fake dependency",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-cache-keys"
+    ],
+    "objectives": [
+      "Implement summarize(text, model)",
+      "Explain the tradeoffs behind test the boundary with a fake dependency"
+    ],
+    "explanation": "A unit test focuses on a small behavior while controlling its collaborators. An integration test checks whether components actually connect, such as whether an HTTP client handles a server response schema. Both are useful, but they answer different questions. Calling a paid or nondeterministic model from every unit test makes failures harder to reproduce and turns a policy test into a test of availability, credentials, and billing.\n\nDependency injection can be as simple as passing a callable to a function. Your test supplies a fake callable that records calls and returns a chosen value. The production adapter can later perform real I/O behind the same interface. Assert what matters: whether a dependency was called, which arguments it received, and how its output was interpreted. Avoid asserting incidental internal details that would prevent harmless refactoring.",
+    "why": "In a real AI backend, test the boundary with a fake dependency affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "def fake_model(text):\n    return {\"length\": len(text)}\n# A deterministic fake helps isolate a caller.\nprint(fake_model(\"abc\"))\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the safe request handling steps.",
+      "options": [
+        "Call the injected model",
+        "Return the result",
+        "Normalize and validate text"
+      ],
+      "answer": [
+        "Normalize and validate text",
+        "Call the injected model",
+        "Return the result"
+      ],
+      "explanation": "Validation must happen before expensive external work. The dependency result is then returned to the caller."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement summarize(text, model). Strip surrounding whitespace. For empty text return \"\" without calling model. Otherwise call model exactly once with the stripped text and return its result.",
+      "starter": "def summarize(text, model):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def summarize(text, model):\n    cleaned = text.strip()\n    if not cleaned:\n        return \"\"\n    return model(cleaned)\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: argument",
+          "code": "seen=[]\nassert summarize(\" hi \",lambda x: seen.append(x) or \"ok\") == \"ok\"\nassert seen == [\"hi\"]",
+          "explanation": "The dependency receives one normalized argument."
+        },
+        {
+          "name": "Case 2: empty",
+          "code": "assert summarize(\"  \",lambda x: (_ for _ in ()).throw(AssertionError(\"called\"))) == \"\"",
+          "explanation": "Empty input avoids external work."
+        },
+        {
+          "name": "Case 3: preserve",
+          "code": "assert summarize(\"a b\",lambda x: x.upper()) == \"A B\"",
+          "explanation": "Return the collaborator result rather than a hardcoded answer."
+        }
+      ],
+      "hints": [
+        "Handle the empty case before invoking the dependency.",
+        "A callable parameter can be invoked exactly like a named function."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "mocking",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-evaluation-data",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Build a versioned evaluation set",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-mocking"
+    ],
+    "objectives": [
+      "Implement category_accuracy(cases)",
+      "Explain the tradeoffs behind build a versioned evaluation set"
+    ],
+    "explanation": "An evaluation set captures examples of the behavior an AI application is expected to support. Each case needs a stable identifier, an input, an expected outcome or rubric, and enough metadata to interpret the result. Include common requests, difficult boundaries, missing evidence, and adversarial inputs. A set made only from development examples can reward overfitting to the very cases used to design the prompt.\n\nKeep training, prompt-development, and final evaluation data separate where practical. Version datasets together with model and prompt settings so that score changes can be traced. Averages alone can hide failures on a small but important subgroup. Report per-category results as well as a headline score. The exercise computes exact-match accuracy by category over supplied cases; this is suitable for deterministic structured outcomes, but free-form answers require richer rubrics and human inspection.",
+    "why": "In a real AI backend, build a versioned evaluation set affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "expected = {\"label\": \"invoice\"}\nactual = {\"label\": \"receipt\"}\n# Exact match is strict; it is one metric, not a universal rubric.\nprint(expected == actual)\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "fill",
+      "question": "A category has 3 exact matches out of 4 cases. Enter its accuracy as a decimal. ",
+      "options": [],
+      "answer": "0.75",
+      "explanation": "Divide correct outcomes by the number of cases within that category: 3 / 4 = 0.75."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement category_accuracy(cases). Each case has category, expected, actual. Return a dictionary mapping each category to its fraction of exact matches. Return {} for no cases.",
+      "starter": "def category_accuracy(cases):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def category_accuracy(cases):\n    counts = {}\n    for case in cases:\n        correct, total = counts.get(case[\"category\"], (0, 0))\n        counts[case[\"category\"]] = (correct + (case[\"expected\"] == case[\"actual\"]), total + 1)\n    return {key: correct / total for key, (correct, total) in counts.items()}\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: empty",
+          "code": "assert category_accuracy([]) == {}",
+          "explanation": "No examples produce no category scores."
+        },
+        {
+          "name": "Case 2: mixed",
+          "code": "assert category_accuracy([{\"category\":\"a\",\"expected\":1,\"actual\":1},{\"category\":\"a\",\"expected\":1,\"actual\":0}]) == {\"a\":0.5}",
+          "explanation": "Mixed results are averaged within a category."
+        },
+        {
+          "name": "Case 3: groups",
+          "code": "assert category_accuracy([{\"category\":\"a\",\"expected\":0,\"actual\":0},{\"category\":\"b\",\"expected\":0,\"actual\":1}]) == {\"a\":1.0,\"b\":0.0}",
+          "explanation": "Separate categories remain visible."
+        }
+      ],
+      "hints": [
+        "Accumulate correct and total counts per category.",
+        "Compute ratios only after processing all cases."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "evaluation-data",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-checkpoint-policy",
+    "module": "production",
+    "section": "Integration and delivery",
+    "title": "Checkpoint: choose bounded work",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "production-evaluation-data"
+    ],
+    "objectives": [
+      "Implement decide(valid, cached, remaining)",
+      "Explain the tradeoffs behind checkpoint: choose bounded work"
+    ],
+    "explanation": "Request validation, rate limits, and caching belong at different points in the request lifecycle. Validation rejects malformed input before work begins. Authorization decides whether this caller may access the requested resource. A cache can then reuse an authorized result; a rate limiter constrains the work that remains. The exact order depends on whether the rate policy counts incoming requests or expensive operations, so document that choice.\n\nThis checkpoint uses a work-budget policy: valid cache hits are served without consuming inference budget. Invalid inputs are always rejected, even when someone provides a cached value. An uncached request runs only if a slot remains. The exercise deliberately returns a decision instead of performing I/O. This separation lets you test every branch deterministically, then connect the policy to adapters in a backend project.",
+    "why": "In a real AI backend, checkpoint: choose bounded work affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "valid = True\ncache_hit = False\nprint(valid and not cache_hit)\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Under the work-budget policy, a valid cached request arrives with no inference budget. What happens?",
+      "options": [
+        "Reject the request",
+        "Serve the cached result",
+        "Call the model anyway"
+      ],
+      "answer": "Serve the cached result",
+      "explanation": "The stated policy counts new inference work. A valid authorized cache hit consumes no new inference slot."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement decide(valid, cached, remaining). Return \"reject\" if not valid, otherwise \"cached\" if cached, otherwise \"run\" if remaining > 0, otherwise \"limited\". cached is a boolean.",
+      "starter": "def decide(valid, cached, remaining):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def decide(valid, cached, remaining):\n    if not valid: return \"reject\"\n    if cached: return \"cached\"\n    return \"run\" if remaining > 0 else \"limited\"\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: reject",
+          "code": "assert decide(False,True,4) == \"reject\"",
+          "explanation": "Validation takes priority over caching."
+        },
+        {
+          "name": "Case 2: cache",
+          "code": "assert decide(True,True,0) == \"cached\"",
+          "explanation": "A cache hit uses no new inference slot in this policy."
+        },
+        {
+          "name": "Case 3: budget",
+          "code": "assert decide(True,False,1) == \"run\"\nassert decide(True,False,0) == \"limited\"",
+          "explanation": "The exact budget boundary is tested."
+        }
+      ],
+      "hints": [
+        "Write the highest-priority checks first.",
+        "Return early to make the decision order explicit."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 50,
+    "tags": [
+      "checkpoint-policy",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-docker-deployment",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Package a reproducible service",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-checkpoint-policy"
+    ],
+    "objectives": [
+      "Implement deployment_errors(spec)",
+      "Explain the tradeoffs behind package a reproducible service"
+    ],
+    "explanation": "A container image packages an application together with its runtime dependencies. A Dockerfile describes how to build that image; running the image creates a container with its own process and filesystem view. Containers share the host kernel, so they are not virtual machines or an excuse to ignore permissions. A small production image should pin dependencies, run as a non-root user, and receive configuration at runtime rather than embedding secrets into image layers.\n\nDeployment also needs a clear startup command, health checks, resource limits, and a rollback plan. A health endpoint should distinguish readiness to serve traffic from simple process liveness. This browser cannot build Docker images or deploy a server. Instead, the exercise validates a small deployment specification using deterministic rules. A later local script can run the API, while infrastructure choices remain explicit engineering decisions.",
+    "why": "In a real AI backend, package a reproducible service affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "# Example Dockerfile fragment; printed text, not a Docker build.\nprint(\"FROM python:3.12-slim\\nWORKDIR /app\\nUSER 10001\")\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "match",
+      "question": "Match each operational component to its purpose.",
+      "options": [
+        "Image",
+        "Container",
+        "Readiness probe"
+      ],
+      "answer": [
+        "Packaged runtime and application",
+        "Running process from an image",
+        "Checks whether traffic can be served"
+      ],
+      "explanation": "An image is a build artifact; a container runs it. Readiness determines whether the running service should receive requests."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement deployment_errors(spec). Return a list, in this order: \"image\" if image is missing/empty; \"user\" if user is missing or equals \"root\"; \"health\" if health_path does not start with \"/\". Missing health_path counts as empty.",
+      "starter": "def deployment_errors(spec):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def deployment_errors(spec):\n    errors = []\n    if not spec.get(\"image\"): errors.append(\"image\")\n    if not spec.get(\"user\") or spec[\"user\"] == \"root\": errors.append(\"user\")\n    if not spec.get(\"health_path\", \"\").startswith(\"/\"): errors.append(\"health\")\n    return errors\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: empty",
+          "code": "assert deployment_errors({}) == [\"image\",\"user\",\"health\"]",
+          "explanation": "Missing settings are reported in a stable order."
+        },
+        {
+          "name": "Case 2: valid",
+          "code": "assert deployment_errors({\"image\":\"app:1\",\"user\":\"app\",\"health_path\":\"/ready\"}) == []",
+          "explanation": "A complete specification has no policy errors."
+        },
+        {
+          "name": "Case 3: root",
+          "code": "assert deployment_errors({\"image\":\"app:1\",\"user\":\"root\",\"health_path\":\"ready\"}) == [\"user\",\"health\"]",
+          "explanation": "Root execution and an invalid path are distinct failures."
+        }
+      ],
+      "hints": [
+        "Accumulate errors rather than returning after the first failure.",
+        "Use dictionary.get for optional fields."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "docker-deployment",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-monitoring-cost",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Observe reliability and cost together",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-docker-deployment"
+    ],
+    "objectives": [
+      "Implement summarize_events(events)",
+      "Explain the tradeoffs behind observe reliability and cost together"
+    ],
+    "explanation": "Monitoring turns runtime events into evidence about how a service behaves. Logs explain individual events, metrics summarize rates and distributions, and traces connect steps in a request. A useful AI trace may connect retrieval, prompt construction, model calls, and postprocessing under one request identifier. Record versions and timings without storing raw secrets or sensitive document contents by default.\n\nCost is another operational signal. A request can be successful yet unexpectedly expensive because it retrieved too much context or retried repeatedly. Estimate token cost with the provider's input and output rates, and compare the estimate with billing data rather than assuming a local calculation is authoritative. Track error rate and latency alongside spending. This exercise aggregates supplied request events so that success, failure, and estimated cost remain separately visible to an operator.",
+    "why": "In a real AI backend, observe reliability and cost together affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "input_tokens, output_tokens = 1000, 200\nprint((input_tokens * 2 + output_tokens * 8) / 1_000_000)\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "One million input tokens cost 2 units and one million output tokens cost 8 units. What is the combined estimate?",
+      "options": [
+        "2",
+        "8",
+        "10"
+      ],
+      "answer": "10",
+      "explanation": "Input and output prices are applied separately and added. This is an estimate to compare with actual provider billing."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement summarize_events(events). Each event has ok (bool), input_tokens, output_tokens. Return {\"requests\":count,\"errors\":failed_count,\"cost\":estimated_cost}. Input rate is 2 per million tokens; output rate is 8 per million. Empty input returns zeros.",
+      "starter": "def summarize_events(events):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def summarize_events(events):\n    return {\"requests\": len(events), \"errors\": sum(not e[\"ok\"] for e in events), \"cost\": sum((2*e[\"input_tokens\"] + 8*e[\"output_tokens\"])/1_000_000 for e in events)}\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: empty",
+          "code": "assert summarize_events([]) == {\"requests\":0,\"errors\":0,\"cost\":0}",
+          "explanation": "An empty batch has defined metrics."
+        },
+        {
+          "name": "Case 2: cost",
+          "code": "r=summarize_events([{\"ok\":True,\"input_tokens\":1000000,\"output_tokens\":1000000}])\nassert r == {\"requests\":1,\"errors\":0,\"cost\":10.0}",
+          "explanation": "Input and output rates differ."
+        },
+        {
+          "name": "Case 3: errors",
+          "code": "r=summarize_events([{\"ok\":False,\"input_tokens\":0,\"output_tokens\":0}])\nassert r[\"errors\"] == 1 and r[\"requests\"] == 1",
+          "explanation": "Failed requests remain in the denominator."
+        }
+      ],
+      "hints": [
+        "Count failures independently of token usage.",
+        "Convert per-million prices by dividing by one million."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "monitoring-cost",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-latency",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Optimize the slow path with measurements",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-monitoring-cost"
+    ],
+    "objectives": [
+      "Implement p95(samples)",
+      "Explain the tradeoffs behind optimize the slow path with measurements"
+    ],
+    "explanation": "Latency is the time a caller waits for a result. A mean can look healthy while a minority of users experience very slow requests, so production dashboards often include tail percentiles such as p95. A percentile definition must be stated: different libraries interpolate differently. The nearest-rank rule sorts observations and chooses the element at ceil(p times n), using one-based positions.\n\nMeasure before optimizing. Serial network calls accumulate waiting time; independent calls may overlap, but concurrency increases load and can trigger rate limits. Batching improves throughput while adding queue delay. Caching can reduce latency but introduces freshness and authorization concerns. This lesson computes a transparent tail metric over supplied measurements. It does not simulate actual network speed or claim that a lower number in a toy dataset proves a deployment improvement.",
+    "why": "In a real AI backend, optimize the slow path with measurements affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "latencies = [100, 110, 120, 900]\nprint(sum(latencies)/len(latencies))\n# A mean can hide the slowest request.\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "fill",
+      "question": "For sorted samples 1 through 20, enter the nearest-rank p95 value.",
+      "options": [],
+      "answer": "19",
+      "explanation": "ceil(0.95 \u00d7 20) is rank 19, corresponding to zero-based index 18 and value 19."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement p95(samples). Use the nearest-rank rule: sort, select index ceil(0.95*n)-1. Return None for an empty list. Do not modify the input.",
+      "starter": "def p95(samples):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def p95(samples):\n    import math\n    if not samples: return None\n    return sorted(samples)[math.ceil(0.95 * len(samples)) - 1]\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: empty",
+          "code": "assert p95([]) is None",
+          "explanation": "No observations produce no percentile estimate."
+        },
+        {
+          "name": "Case 2: rank",
+          "code": "assert p95(list(range(1,21))) == 19",
+          "explanation": "For twenty samples the nearest rank is nineteen."
+        },
+        {
+          "name": "Case 3: immutable",
+          "code": "x=[8,1,3]\nassert p95(x) == 8 and x == [8,1,3]",
+          "explanation": "Sorting must not mutate caller data."
+        }
+      ],
+      "hints": [
+        "Sort a copy of the observations.",
+        "Use math.ceil for the one-based rank, then subtract one."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "latency",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-security-architecture",
+    "module": "production",
+    "section": "Reliable services",
+    "title": "Authorize data before retrieving it",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "lesson",
+    "prerequisites": [
+      "production-latency"
+    ],
+    "objectives": [
+      "Implement authorized_documents(documents, tenant, allowed_ids)",
+      "Explain the tradeoffs behind authorize data before retrieving it"
+    ],
+    "explanation": "AI application security includes ordinary application controls as well as model-specific risks. Validate inputs, authenticate callers, authorize access to data and tools, and protect secrets at the process boundary. A model's generated statement that a user has permission is not an authorization decision. Enforce tenant and document access rules in deterministic code before retrieval results or tool responses enter a prompt.\n\nRetrieved documents can contain malicious instructions. Treat their text as untrusted evidence, separate it from trusted instructions, and allow only validated tool actions with bounded capabilities. Prompt wording alone is not a complete defense. This exercise models document authorization as an intersection of tenant identity and allowed identifiers. In a real system, identity and permissions must come from a trusted server-side source; accepting them directly from a request would defeat the check.",
+    "why": "In a real AI backend, authorize data before retrieving it affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "identity = {\"tenant\": \"acme\", \"role\": \"reader\"}\n# Trusted identity belongs outside generated model text.\nprint(identity[\"role\"] == \"reader\")\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "A retrieved document saying \u201cthe user is an administrator\u201d can grant permission to call an administrative tool.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Retrieved text is untrusted evidence. Authorization must come from trusted identity and deterministic permission checks."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement authorized_documents(documents, tenant, allowed_ids). Each document has id and tenant. Return documents whose tenant matches and whose id is in allowed_ids, preserving input order. Do not mutate documents.",
+      "starter": "def authorized_documents(documents, tenant, allowed_ids):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def authorized_documents(documents, tenant, allowed_ids):\n    allowed = set(allowed_ids)\n    return [d for d in documents if d[\"tenant\"] == tenant and d[\"id\"] in allowed]\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: tenant",
+          "code": "assert authorized_documents([{\"id\":\"x\",\"tenant\":\"b\"}],\"a\",[\"x\"]) == []",
+          "explanation": "An allowed identifier cannot cross the tenant boundary."
+        },
+        {
+          "name": "Case 2: permissions",
+          "code": "assert authorized_documents([{\"id\":\"x\",\"tenant\":\"a\"}],\"a\",[]) == []",
+          "explanation": "Tenant membership alone is insufficient."
+        },
+        {
+          "name": "Case 3: order",
+          "code": "docs=[{\"id\":\"b\",\"tenant\":\"a\"},{\"id\":\"a\",\"tenant\":\"a\"}]\nassert authorized_documents(docs,\"a\",[\"a\",\"b\"]) == docs",
+          "explanation": "Authorization preserves source order."
+        }
+      ],
+      "hints": [
+        "Both conditions must hold for each document.",
+        "Convert allowed IDs to a set once, outside the loop."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 20,
+    "tags": [
+      "security-architecture",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-checkpoint-observability",
+    "module": "production",
+    "section": "Integration and delivery",
+    "title": "Checkpoint: evaluate a release gate",
+    "minutes": 10,
+    "difficulty": "Advanced",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "production-security-architecture"
+    ],
+    "objectives": [
+      "Implement release_ready(report)",
+      "Explain the tradeoffs behind checkpoint: evaluate a release gate"
+    ],
+    "explanation": "A release gate is a deterministic rule that decides whether a candidate version has met stated requirements. It may combine correctness scores, security checks, error rates, and latency budgets. A passing gate is evidence about those measurements, not proof that every future request will succeed. Keep a rollback path and continue monitoring after deployment because production traffic can differ from an evaluation set.\n\nWhen combining metrics, avoid allowing one excellent score to cancel a critical failure. A security check can be mandatory while quality and latency have independent thresholds. Also define what happens when measurements are missing: silently treating missing results as success creates an easy route to an untested release. This checkpoint implements a small explicit gate with three required values. Tests exercise exact boundaries and missing evidence so that the rule cannot accidentally accept an incomplete report.",
+    "why": "In a real AI backend, checkpoint: evaluate a release gate affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "checks = [True, True, False]\nprint(all(checks))\n# Mandatory gates combine with AND, not an average.\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "A report has accuracy=1.0 and p95_ms=100, but no security_ok field. Should this release gate pass?",
+      "options": [
+        "Yes, because quality is perfect",
+        "No, mandatory evidence is missing"
+      ],
+      "answer": "No, mandatory evidence is missing",
+      "explanation": "The gate fails closed when any required measurement is absent. Other strong scores cannot replace the missing security result."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement release_ready(report). Return True only when security_ok is True, accuracy >= 0.9, and p95_ms <= 1000. Missing keys fail closed. Values have the documented boolean/numeric types.",
+      "starter": "def release_ready(report):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def release_ready(report):\n    return report.get(\"security_ok\") is True and report.get(\"accuracy\", -1) >= 0.9 and report.get(\"p95_ms\", float(\"inf\")) <= 1000\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: boundary",
+          "code": "assert release_ready({\"security_ok\":True,\"accuracy\":0.9,\"p95_ms\":1000}) is True",
+          "explanation": "Threshold equality is accepted."
+        },
+        {
+          "name": "Case 2: security",
+          "code": "assert release_ready({\"security_ok\":False,\"accuracy\":1,\"p95_ms\":1}) is False",
+          "explanation": "High quality cannot override a security failure."
+        },
+        {
+          "name": "Case 3: missing",
+          "code": "assert release_ready({}) is False\nassert release_ready({\"security_ok\":True,\"accuracy\":1}) is False",
+          "explanation": "Missing measurements do not count as passing evidence."
+        }
+      ],
+      "hints": [
+        "Use safe defaults for absent numeric measurements.",
+        "Combine all required checks with and."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 50,
+    "tags": [
+      "checkpoint-observability",
+      "production",
+      "reliability"
+    ]
+  },
+  {
+    "id": "production-project-validate",
+    "module": "production",
+    "section": "Integration and delivery",
+    "title": "Backend milestone 1: normalize the request",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "production-checkpoint-observability"
+    ],
+    "objectives": [
+      "Implement normalize_request(payload)",
+      "Explain the tradeoffs behind backend milestone 1: normalize the request"
+    ],
+    "explanation": "A reliable backend can be developed as a deterministic core surrounded by I/O adapters. The core handles validation, authorization, response policy, and observability; adapters translate HTTP requests, model calls, and storage operations into that core's inputs. This architecture makes a useful first implementation testable without credentials, a network connection, or a running server. It also makes the boundary between simulation and real inference explicit.\n\nThis capstone builds a small request-processing core across three milestones. First normalize an incoming request. Next route valid requests to a supplied model callable while returning stable error shapes. Finally process a batch and report operational counts. The model callable in browser tests is a deterministic fake, not an LLM. A real FastAPI adapter would use Pydantic schemas, inject an authenticated identity, call an external adapter asynchronously, and map the resulting status to an HTTP response. Preserve these boundaries when you extend the project locally.",
+    "why": "In a real AI backend, backend milestone 1: normalize the request affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "payload = {\"text\": \"  summarize this  \"}\nprint(payload[\"text\"].strip())\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which incoming request should pass the normalization contract?",
+      "options": [
+        "{\"text\": 42}",
+        "{\"text\": \"   \"}",
+        "{\"text\": \"  hello  \"}"
+      ],
+      "answer": "{\"text\": \"  hello  \"}",
+      "explanation": "The text must be a nonblank string. Surrounding whitespace is removed, producing hello."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement normalize_request(payload). If text is not a string or is blank after stripping, return {\"error\":\"invalid_text\"}. Otherwise return {\"text\":stripped_text}. Ignore extra fields.",
+      "starter": "def normalize_request(payload):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def normalize_request(payload):\n    text = payload.get(\"text\")\n    if not isinstance(text, str) or not text.strip(): return {\"error\":\"invalid_text\"}\n    return {\"text\":text.strip()}\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: valid",
+          "code": "assert normalize_request({\"text\":\" hi \",\"extra\":1}) == {\"text\":\"hi\"}",
+          "explanation": "Normalize only the supported request field."
+        },
+        {
+          "name": "Case 2: blank",
+          "code": "assert normalize_request({\"text\":\"  \"}) == {\"error\":\"invalid_text\"}",
+          "explanation": "Blank input is invalid."
+        },
+        {
+          "name": "Case 3: types",
+          "code": "assert normalize_request({\"text\":42}) == {\"error\":\"invalid_text\"}\nassert normalize_request({}) == {\"error\":\"invalid_text\"}",
+          "explanation": "Missing or non-string text does not reach inference."
+        }
+      ],
+      "hints": [
+        "Validate the type before calling strip.",
+        "Return a new dictionary containing only the documented fields."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 80,
+    "tags": [
+      "project-validate",
+      "production",
+      "reliability"
+    ],
+    "project": {
+      "id": "production-capstone",
+      "title": "A tested AI application backend",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "production-project-handle",
+    "module": "production",
+    "section": "Integration and delivery",
+    "title": "Backend milestone 2: inject the model adapter",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "production-project-validate"
+    ],
+    "objectives": [
+      "Implement handle_request(payload, model)",
+      "Explain the tradeoffs behind backend milestone 2: inject the model adapter"
+    ],
+    "explanation": "A reliable backend can be developed as a deterministic core surrounded by I/O adapters. The core handles validation, authorization, response policy, and observability; adapters translate HTTP requests, model calls, and storage operations into that core's inputs. This architecture makes a useful first implementation testable without credentials, a network connection, or a running server. It also makes the boundary between simulation and real inference explicit.\n\nThis capstone builds a small request-processing core across three milestones. First normalize an incoming request. Next route valid requests to a supplied model callable while returning stable error shapes. Finally process a batch and report operational counts. The model callable in browser tests is a deterministic fake, not an LLM. A real FastAPI adapter would use Pydantic schemas, inject an authenticated identity, call an external adapter asynchronously, and map the resulting status to an HTTP response. Preserve these boundaries when you extend the project locally.",
+    "why": "In a real AI backend, backend milestone 2: inject the model adapter affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "def fake_adapter(text):\n    return text.upper()\nprint(fake_adapter(\"hello\"))\n# This fake is not real model inference.\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "The injected model raises RuntimeError(\"secret\"). Which public status should the handler return?",
+      "options": [
+        "200",
+        "400",
+        "502"
+      ],
+      "answer": "502",
+      "explanation": "A dependency failure maps to 502 with the stable model_unavailable code. The exception message is not returned."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement handle_request(payload, model). Validate text using the milestone-1 rules. Invalid input returns {\"status\":400,\"error\":\"invalid_text\"}. Otherwise call model(stripped_text) once and return {\"status\":200,\"result\":value}. If model raises Exception, return {\"status\":502,\"error\":\"model_unavailable\"}; never expose its exception message.",
+      "starter": "def handle_request(payload, model):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def handle_request(payload, model):\n    text = payload.get(\"text\")\n    if not isinstance(text, str) or not text.strip(): return {\"status\":400,\"error\":\"invalid_text\"}\n    try:\n        value = model(text.strip())\n    except Exception:\n        return {\"status\":502,\"error\":\"model_unavailable\"}\n    return {\"status\":200,\"result\":value}\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: success",
+          "code": "assert handle_request({\"text\":\" hi \"},str.upper) == {\"status\":200,\"result\":\"HI\"}",
+          "explanation": "Successful calls preserve the adapter result."
+        },
+        {
+          "name": "Case 2: invalid",
+          "code": "assert handle_request({},lambda x: 1/0) == {\"status\":400,\"error\":\"invalid_text\"}",
+          "explanation": "Invalid input avoids the model call."
+        },
+        {
+          "name": "Case 3: failure",
+          "code": "def broken(text): raise RuntimeError(\"private secret\")\nassert handle_request({\"text\":\"x\"},broken) == {\"status\":502,\"error\":\"model_unavailable\"}",
+          "explanation": "Dependency errors produce a stable public error without secret details."
+        }
+      ],
+      "hints": [
+        "Validate before entering the model try block.",
+        "Catch Exception around the dependency call and return the public error code."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 80,
+    "tags": [
+      "project-handle",
+      "production",
+      "reliability"
+    ],
+    "project": {
+      "id": "production-capstone",
+      "title": "A tested AI application backend",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "production-project-batch",
+    "module": "production",
+    "section": "Integration and delivery",
+    "title": "Backend milestone 3: report a tested batch",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "production-project-handle"
+    ],
+    "objectives": [
+      "Implement process_batch(payloads, model)",
+      "Explain the tradeoffs behind backend milestone 3: report a tested batch"
+    ],
+    "explanation": "A reliable backend can be developed as a deterministic core surrounded by I/O adapters. The core handles validation, authorization, response policy, and observability; adapters translate HTTP requests, model calls, and storage operations into that core's inputs. This architecture makes a useful first implementation testable without credentials, a network connection, or a running server. It also makes the boundary between simulation and real inference explicit.\n\nThis capstone builds a small request-processing core across three milestones. First normalize an incoming request. Next route valid requests to a supplied model callable while returning stable error shapes. Finally process a batch and report operational counts. The model callable in browser tests is a deterministic fake, not an LLM. A real FastAPI adapter would use Pydantic schemas, inject an authenticated identity, call an external adapter asynchronously, and map the resulting status to an HTTP response. Preserve these boundaries when you extend the project locally.",
+    "why": "In a real AI backend, backend milestone 3: report a tested batch affects whether users receive predictable results when traffic, model behavior, or external dependencies change. Small deterministic components let you test the policy before connecting it to a live service.",
+    "example": {
+      "code": "responses = [{\"status\": 200}, {\"status\": 502}]\nprint(sum(r[\"status\"] == 200 for r in responses))\n",
+      "explanation": "Trace the inputs before following the output. The example isolates a single decision so that you can inspect it without an external server or model. In the exercise, make the same kind of policy explicit in a reusable function, then test the boundary conditions as well as the normal path."
+    },
+    "activity": {
+      "type": "fill",
+      "question": "A batch has one valid successful request, one invalid request, and one model failure. How many failures should the summary report?",
+      "options": [],
+      "answer": "2",
+      "explanation": "Both non-200 responses count as failures. The successful request remains visible and the batch preserves its order."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement process_batch(payloads, model). Apply the milestone-2 behavior independently to each payload. Return {\"responses\":list,\"successes\":number_of_200_results,\"failures\":all_other_results}. Preserve order and continue after an adapter failure. An empty batch returns empty responses and zero counts.",
+      "starter": "def process_batch(payloads, model):\n    raise NotImplementedError(\"Implement the contract above\")\n",
+      "solution": "def process_batch(payloads, model):\n    responses = []\n    for payload in payloads:\n        text = payload.get(\"text\")\n        if not isinstance(text, str) or not text.strip():\n            response = {\"status\":400,\"error\":\"invalid_text\"}\n        else:\n            try: response = {\"status\":200,\"result\":model(text.strip())}\n            except Exception: response = {\"status\":502,\"error\":\"model_unavailable\"}\n        responses.append(response)\n    successes = sum(r[\"status\"] == 200 for r in responses)\n    return {\"responses\":responses,\"successes\":successes,\"failures\":len(responses)-successes}\n",
+      "solutionExplanation": "The implementation makes the stated policy explicit instead of hiding it inside an external API call. Follow each branch against the contract: normal inputs produce the requested result, while empty or invalid inputs follow the documented behavior. The tests cover distinct cases so that a constant answer cannot satisfy the task.",
+      "tests": [
+        {
+          "name": "Case 1: empty",
+          "code": "assert process_batch([],str.upper) == {\"responses\":[],\"successes\":0,\"failures\":0}",
+          "explanation": "An empty batch has zero operational counts."
+        },
+        {
+          "name": "Case 2: mixed",
+          "code": "r=process_batch([{\"text\":\" hi \"},{}],str.upper)\nassert r[\"successes\"] == 1 and r[\"failures\"] == 1\nassert r[\"responses\"][0] == {\"status\":200,\"result\":\"HI\"}",
+          "explanation": "Validation failures remain in the ordered response list."
+        },
+        {
+          "name": "Case 3: recover",
+          "code": "def sometimes(text):\n    if text == \"bad\": raise RuntimeError(\"secret\")\n    return text\nr=process_batch([{\"text\":\"bad\"},{\"text\":\"good\"}],sometimes)\nassert r[\"responses\"][0] == {\"status\":502,\"error\":\"model_unavailable\"}\nassert r[\"responses\"][1] == {\"status\":200,\"result\":\"good\"}\nassert r[\"successes\"] == 1 and r[\"failures\"] == 1",
+          "explanation": "One dependency failure does not discard later requests."
+        }
+      ],
+      "hints": [
+        "Handle each payload independently inside the loop.",
+        "Count successful responses after preserving the complete ordered list."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Testing only the happy path and overlooking the documented boundary behavior.",
+      "Mixing external I/O into policy logic, which makes a small deterministic test depend on network availability."
+    ],
+    "xp": 80,
+    "tags": [
+      "project-batch",
+      "production",
+      "reliability"
+    ],
+    "project": {
+      "id": "production-capstone",
+      "title": "A tested AI application backend",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

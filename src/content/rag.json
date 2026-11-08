@@ -1,0 +1,1953 @@
+[
+  {
+    "id": "rag-why-retrieve",
+    "module": "rag",
+    "section": "Retrieval foundations",
+    "title": "Give a model the missing facts",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [],
+    "objectives": [
+      "Explain give a model the missing facts in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A language model predicts plausible continuations from patterns learned during training. That training does not guarantee access to yesterday's incident report or a private handbook. Retrieval-augmented generation, or RAG, supplies selected source material alongside the question at inference time. Retrieval finds evidence; generation uses it to compose an answer. Neither stage automatically guarantees correctness.\n\nFine-tuning changes model parameters and can improve behavior, style, or a specialized task. It is usually a poor substitute for a frequently updated, auditable document store. RAG updates evidence without retraining. A useful first decision is whether a request needs external facts at all. A greeting can be answered directly; a question about a policy version should trigger retrieval. Explicit metadata makes that routing decision testable.",
+    "why": "An internal support assistant needs current policy facts and traceable sources. Separating requests that need evidence from conversational requests avoids unnecessary search while making clear when stored model knowledge cannot responsibly supply the requested answer.",
+    "example": {
+      "code": "request = {\"question\":\"What changed in policy v3?\", \"needs_sources\":True}\nroute = \"retrieve\" if request[\"needs_sources\"] else \"direct\"\nprint(route)  # retrieve",
+      "explanation": "The request carries an explicit evidence requirement, so routing does not depend on guessing from keywords. A production classifier might infer that requirement, but its uncertainty would need evaluation. This simple branch isolates the architecture decision before introducing ranking, embeddings, or a model API into the pipeline."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which change usually favors RAG?",
+      "options": [
+        "A policy changes weekly",
+        "A fixed writing style",
+        "A smaller vocabulary"
+      ],
+      "answer": "A policy changes weekly",
+      "explanation": "RAG supplies external facts at inference time; fine-tuning changes parameters."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement route_request(request). Return \"retrieve\" when needs_sources or private_data is truthy; otherwise return \"direct\". Missing flags default to False.",
+      "starter": "def route_request(request):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def route_request(request):\n    return \"retrieve\" if request.get(\"needs_sources\",False) or request.get(\"private_data\",False) else \"direct\"\n",
+      "solutionExplanation": "RAG supplies external facts at inference time; fine-tuning changes parameters. Use dict.get with False defaults and combine the flags with or. Do not treat confidence as proof of current knowledge.",
+      "tests": [
+        {
+          "name": "Evidence",
+          "code": "assert route_request({\"needs_sources\":True}) == \"retrieve\"",
+          "explanation": "Source requirements trigger retrieval."
+        },
+        {
+          "name": "Private",
+          "code": "assert route_request({\"private_data\":True}) == \"retrieve\"",
+          "explanation": "Private context needs evidence."
+        },
+        {
+          "name": "Default",
+          "code": "assert route_request({}) == \"direct\"",
+          "explanation": "Missing flags use the default."
+        }
+      ],
+      "hints": [
+        "RAG supplies external facts at inference time; fine-tuning changes parameters.",
+        "Use dict.get with False defaults and combine the flags with or."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not treat confidence as proof of current knowledge.",
+      "Avoid routing solely on question punctuation."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "architecture"
+    ]
+  },
+  {
+    "id": "rag-architecture",
+    "module": "rag",
+    "section": "Retrieval foundations",
+    "title": "Separate retrieval from generation",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-why-retrieve"
+    ],
+    "objectives": [
+      "Explain separate retrieval from generation in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A small RAG system has two flows. Ingestion loads documents, cleans them, divides them into chunks, and stores searchable representations with metadata. Query time transforms a question into a search request, retrieves candidates, optionally reranks them, builds a prompt, and generates an answer. Keeping these flows separate prevents expensive reprocessing on every user question.\n\nEach boundary needs a data contract. A retrieved item can contain id, text, score, and source. The generator should receive bounded evidence rather than unrestricted database access. Logging intermediate objects helps distinguish retrieval failures from answer-writing failures. Our first pipeline only renders selected records into context. Later lessons replace each stage without changing the surrounding contract, demonstrating why a simple interface is useful even before the system becomes large.",
+    "why": "When an assistant answers incorrectly, one opaque function makes diagnosis difficult. Separate stages let engineers inspect candidate documents, ranking decisions, and final evidence, supporting targeted fixes and regression tests as documents and models change over time.",
+    "example": {
+      "code": "hits = [{\"id\":\"a\",\"text\":\"Backups run nightly.\"}]\ncontext = \"\\n\".join(f'[{h[\"id\"]}] {h[\"text\"]}' for h in hits)\nprint(context)",
+      "explanation": "The search result keeps an identifier alongside its text. Rendering preserves that identifier, allowing later output to cite evidence instead of inventing references. Joining records is separate from search, so it can be tested with fixed inputs even when the eventual retriever is approximate, remote, or updated independently."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Arrange query-time stages.",
+      "options": [
+        "Generate answer",
+        "Build context",
+        "Retrieve candidates"
+      ],
+      "answer": [
+        "Retrieve candidates",
+        "Build context",
+        "Generate answer"
+      ],
+      "explanation": "Retrieve candidates before constructing context and generating an answer."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement context_lines(hits). Preserve order and render each record as \"[id] text\", separated by newlines. Empty input returns \"\".",
+      "starter": "def context_lines(hits):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def context_lines(hits):\n    return \"\\n\".join(f'[{h[\"id\"]}] {h[\"text\"]}' for h in hits)\n",
+      "solutionExplanation": "Retrieve candidates before constructing context and generating an answer. Format records independently, then join with a newline. Do not discard source identifiers during rendering.",
+      "tests": [
+        {
+          "name": "Two records",
+          "code": "assert context_lines([{\"id\":\"x\",\"text\":\"One\"},{\"id\":\"y\",\"text\":\"Two\"}]) == \"[x] One\\n[y] Two\"",
+          "explanation": "Order and ids survive."
+        },
+        {
+          "name": "Empty",
+          "code": "assert context_lines([]) == \"\"",
+          "explanation": "No evidence means empty context."
+        },
+        {
+          "name": "Unicode",
+          "code": "assert context_lines([{\"id\":\"dk\",\"text\":\"blå\"}]) == \"[dk] blå\"",
+          "explanation": "Unicode text is preserved."
+        }
+      ],
+      "hints": [
+        "Retrieve candidates before constructing context and generating an answer.",
+        "Format records independently, then join with a newline."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not discard source identifiers during rendering.",
+      "Do not silently reorder evidence while formatting it."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "pipeline"
+    ],
+    "visual": "pipeline"
+  },
+  {
+    "id": "rag-load-documents",
+    "module": "rag",
+    "section": "Ingestion and chunks",
+    "title": "Load documents with provenance",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-architecture"
+    ],
+    "objectives": [
+      "Explain load documents with provenance in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A loader converts files or external responses into a common record. Text, PDF, HTML, and JSON sources require different parsers, but downstream code should receive a stable shape such as id, text, and source. Parsing extracts content; cleaning removes known formatting noise. Parsers can lose tables, headings, or reading order, so inspect representative output before indexing thousands of files.\n\nProvenance must travel with the text. Store a source path and stable identifier before chunking. If a document is malformed, report that failure instead of indexing an exception's string representation. Here we load a JSON list with the standard library and validate every required field. JSON parsing checks syntax, not application semantics. Validation at this boundary turns mysterious downstream errors into clear ingestion failures that can be repaired.",
+    "why": "A grounded answer needs to point back to an actual document. Recording provenance during ingestion prevents anonymous chunks, enables deletion and reindexing, and helps identify which parser or source version produced a suspicious search passage.",
+    "example": {
+      "code": "import json\nraw = '[{\"id\":\"guide\",\"text\":\"Retry once\",\"source\":\"guide.json\"}]'\nrecords = json.loads(raw)\nprint(records[0][\"source\"])",
+      "explanation": "JSON decoding converts serialized text into lists and dictionaries; it does not verify the application's document contract. The source field is ordinary data that must be preserved deliberately. A robust loader follows decoding with shape and type checks, then returns a consistent representation that later ingestion stages can safely consume."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "JSON parsing guarantees each record has valid text.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Parsing checks JSON syntax, while validation checks the application contract."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement load_docs(raw). Parse a JSON array. Require each item to be a dictionary whose id, text, source are strings; otherwise raise ValueError. A non-list root raises ValueError. Return only those three fields.",
+      "starter": "def load_docs(raw):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def load_docs(raw):\n    import json\n    records = json.loads(raw)\n    if not isinstance(records,list):\n        raise ValueError(\"Expected list\")\n    result = []\n    for record in records:\n        if not isinstance(record,dict) or not all(isinstance(record.get(k),str) for k in (\"id\",\"text\",\"source\")):\n            raise ValueError(\"Invalid document\")\n        result.append({k:record[k] for k in (\"id\",\"text\",\"source\")})\n    return result\n",
+      "solutionExplanation": "Parsing checks JSON syntax, while validation checks the application contract. Validate the root, then each required field, before constructing the output dictionaries. Do not use str(record) instead of extracted text.",
+      "tests": [
+        {
+          "name": "Valid",
+          "code": "assert load_docs('[{\"id\":\"a\",\"text\":\"Hi\",\"source\":\"s\"}]')[0][\"text\"] == \"Hi\"",
+          "explanation": "Valid fields are decoded."
+        },
+        {
+          "name": "Empty",
+          "code": "assert load_docs(\"[]\") == []",
+          "explanation": "Empty collections are allowed."
+        },
+        {
+          "name": "Reject",
+          "code": "try:\n    load_docs('[{\"id\":\"a\",\"text\":3,\"source\":\"s\"}]')\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Nontext content fails validation."
+        }
+      ],
+      "hints": [
+        "Parsing checks JSON syntax, while validation checks the application contract.",
+        "Validate the root, then each required field, before constructing the output dictionaries."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not use str(record) instead of extracted text.",
+      "Do not discard source metadata while selecting fields."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "json",
+      "ingestion"
+    ]
+  },
+  {
+    "id": "rag-clean-text",
+    "module": "rag",
+    "section": "Ingestion and chunks",
+    "title": "Clean text without erasing meaning",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-load-documents"
+    ],
+    "objectives": [
+      "Explain clean text without erasing meaning in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Extracted text often contains repeated spaces, nonbreaking spaces, and line breaks inserted for page layout. Normalizing this noise improves matching and makes chunk lengths predictable. Python split without an argument recognizes whitespace runs; joining the resulting words with one space gives a simple normalization rule. Unicode normalization is separate: visually similar characters can still have different code-point sequences.\n\nCleaning should be conservative. Lowercasing can help a search index but can change the meaning of source code and identifiers. Removing punctuation damages decimals and citations. Keep original text when fidelity matters, and create a separate normalized search field. This lesson uses whitespace-only transformation and verifies that punctuation and case survive. An explicit narrow contract is safer than a pile of unexamined regular expressions.",
+    "why": "Retrieval pipelines ingest exports from tools with inconsistent spacing. Stable normalization reduces accidental search misses and duplicated chunks while preserving the words an answer may cite, especially when documents contain technical identifiers, version numbers, or configuration examples.",
+    "example": {
+      "code": "text = \"Model\\u00a0A\\n  costs  $2.50.\"\nprint(\" \".join(text.split()))  # Model A costs $2.50.",
+      "explanation": "Splitting without a separator recognizes different whitespace characters and discards empty pieces. Joining chooses one canonical separator. The transformation does not lowercase words or strip punctuation, so the model name and decimal price remain intact. This example shows how deliberately limiting a cleaning rule makes its behavior easier to trust."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does this cleaner preserve?",
+      "options": [
+        "Punctuation and case",
+        "Original line breaks",
+        "Space counts"
+      ],
+      "answer": "Punctuation and case",
+      "explanation": "Whitespace-only cleaning preserves punctuation and letter case."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement clean_text(text). Collapse whitespace runs to one ASCII space and trim ends. Preserve every non-whitespace character. Whitespace-only input returns \"\".",
+      "starter": "def clean_text(text):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def clean_text(text):\n    return \" \".join(text.split())\n",
+      "solutionExplanation": "Whitespace-only cleaning preserves punctuation and letter case. Use split() without arguments, then join words with one space. Removing punctuation can corrupt code and decimal values.",
+      "tests": [
+        {
+          "name": "Whitespace",
+          "code": "assert clean_text(\" a\\n\\tb  \") == \"a b\"",
+          "explanation": "Runs collapse."
+        },
+        {
+          "name": "Blank",
+          "code": "assert clean_text(\" \\t \") == \"\"",
+          "explanation": "No phantom word is created."
+        },
+        {
+          "name": "Meaning",
+          "code": "assert clean_text(\" API_v2:  3.14 \") == \"API_v2: 3.14\"",
+          "explanation": "Case and punctuation survive."
+        }
+      ],
+      "hints": [
+        "Whitespace-only cleaning preserves punctuation and letter case.",
+        "Use split() without arguments, then join words with one space."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Removing punctuation can corrupt code and decimal values.",
+      "Do not overwrite archival originals with lossy normalized text."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "text"
+    ]
+  },
+  {
+    "id": "rag-chunking",
+    "module": "rag",
+    "section": "Ingestion and chunks",
+    "title": "Choose chunk size and overlap",
+    "minutes": 8,
+    "difficulty": "Foundation",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-clean-text"
+    ],
+    "objectives": [
+      "Explain choose chunk size and overlap in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Retrievers return chunks rather than entire libraries. A chunk should contain a useful claim and its context while remaining small enough to rank precisely and fit into a prompt. Fixed-size word windows are a transparent starting point. With size five and overlap two, the next window begins three words later. Stride is size minus overlap.\n\nOverlap preserves information around boundaries, but duplicates text and increases storage. Excessive overlap can fill context with nearly identical passages. Word counts are a teaching approximation: production systems often count model tokens and respect paragraphs, headings, and code blocks. Validate that size is positive and overlap is smaller than size, otherwise the loop might never advance. Stop when a window reaches the end instead of producing an extra overlap-only fragment.",
+    "why": "A policy condition may appear just beyond a chunk boundary. Chunking controls whether that condition and its claim can be retrieved together, so explicit boundary tests help balance context completeness, duplicate retrieval, storage cost, and the final prompt budget.",
+    "example": {
+      "code": "words = \"one two three four five six\".split()\nsize, overlap = 4, 1\nprint(words[:size])\nprint(words[size-overlap:])",
+      "explanation": "The second slice starts one word before the first slice ended. That repeated word illustrates overlap, while a positive stride ensures progress. Python slicing safely returns a shorter final window. A complete chunker also stops after reaching the final word so it does not create redundant fragments containing only trailing overlap."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "For size 8 and overlap 3, what is stride?",
+      "options": [
+        "3",
+        "5",
+        "11"
+      ],
+      "answer": "5",
+      "explanation": "Stride equals size minus overlap, so 8 minus 3 is 5."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement chunk_words(text,size,overlap). Return space-joined word windows advancing by size-overlap. Stop after the first window reaching the end. Empty input returns []. Raise ValueError unless size>0 and 0<=overlap<size.",
+      "starter": "def chunk_words(text,size,overlap):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def chunk_words(text,size,overlap):\n    if size <= 0 or not 0 <= overlap < size:\n        raise ValueError(\"Invalid window\")\n    words, chunks, start = text.split(), [], 0\n    while start < len(words):\n        chunks.append(\" \".join(words[start:start+size]))\n        if start+size >= len(words):\n            break\n        start += size-overlap\n    return chunks\n",
+      "solutionExplanation": "Stride equals size minus overlap, so 8 minus 3 is 5. Append each slice, stop if it reaches the end, otherwise advance by stride. Using size+overlap creates gaps.",
+      "tests": [
+        {
+          "name": "Overlap",
+          "code": "assert chunk_words(\"a b c d e f\",4,1) == [\"a b c d\",\"d e f\"]",
+          "explanation": "One overlapping word is retained."
+        },
+        {
+          "name": "Empty",
+          "code": "assert chunk_words(\"\",3,1) == []",
+          "explanation": "Empty documents make no chunks."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    chunk_words(\"a\",2,2)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Zero stride is rejected."
+        }
+      ],
+      "hints": [
+        "Stride equals size minus overlap, so 8 minus 3 is 5.",
+        "Append each slice, stop if it reaches the end, otherwise advance by stride."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Using size+overlap creates gaps.",
+      "Allowing overlap equal to size can create an infinite loop."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "chunking"
+    ]
+  },
+  {
+    "id": "rag-checkpoint-ingestion",
+    "module": "rag",
+    "section": "Checkpoint 1",
+    "title": "Checkpoint: trustworthy ingestion",
+    "minutes": 10,
+    "difficulty": "Foundation",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "rag-chunking"
+    ],
+    "objectives": [
+      "Explain checkpoint: trustworthy ingestion in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The first retrieval boundary turns source records into clean, addressable chunks. A correct implementation preserves provenance, applies a documented cleaning rule, and handles empty documents without inventing content. This checkpoint combines those ideas in one transformation. We use non-overlapping chunks so you can focus on the record contract before adding more retrieval complexity.\n\nA chunk id combines its document id and zero-based position. Positional ids are convenient but are not stable after arbitrary document edits; production stores often add a version or content hash. Keep the source field unchanged. Test ordinary and empty input because a blank chunk can later appear as meaningless evidence with a valid-looking citation. The task requires integration of cleaning, iteration, dictionary construction, and explicit input validation.",
+    "why": "A search index depends on its ingestion boundary. This checkpoint verifies that evidence records have usable text, provenance, and predictable identifiers, allowing downstream problems to be investigated without repeatedly reopening and manually examining every original source file.",
+    "example": {
+      "code": "doc = {\"id\":\"faq\",\"text\":\"one two three\",\"source\":\"faq.txt\"}\nrecord = {\"id\":doc[\"id\"]+\":0\",\"text\":\"one two\",\"source\":doc[\"source\"]}\nprint(record[\"id\"])",
+      "explanation": "The chunk has its own id while retaining its parent source. Its text is smaller than the full document, allowing retrieval to select a focused passage. The checkpoint generalizes this single-record example across documents and windows, including empty documents and final partial chunks whose lengths differ from the configured maximum."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What should whitespace-only documents contribute?",
+      "options": [
+        "No chunks",
+        "An empty chunk",
+        "A filename chunk"
+      ],
+      "answer": "No chunks",
+      "explanation": "Blank documents contain no evidence and should create no chunks."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement ingest(docs,size). Clean whitespace and split each {id,text,source} into non-overlapping chunks of at most size words. Return {id:\"document-id:index\",text,source}. Skip blank documents. Raise ValueError for size<=0.",
+      "starter": "def ingest(docs,size):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def ingest(docs,size):\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    result = []\n    for doc in docs:\n        words = doc[\"text\"].split()\n        for i,start in enumerate(range(0,len(words),size)):\n            result.append({\"id\":f'{doc[\"id\"]}:{i}',\"text\":\" \".join(words[start:start+size]),\"source\":doc[\"source\"]})\n    return result\n",
+      "solutionExplanation": "Blank documents contain no evidence and should create no chunks. Iterate over split words with range(0,len(words),size), attaching source and chunk index. Do not give chunks from different documents the same id.",
+      "tests": [
+        {
+          "name": "Pipeline",
+          "code": "assert ingest([{\"id\":\"a\",\"text\":\" x\\n y z\",\"source\":\"s\"}],2) == [{\"id\":\"a:0\",\"text\":\"x y\",\"source\":\"s\"},{\"id\":\"a:1\",\"text\":\"z\",\"source\":\"s\"}]",
+          "explanation": "Cleaning and provenance work together."
+        },
+        {
+          "name": "Blank",
+          "code": "assert ingest([{\"id\":\"a\",\"text\":\" \",\"source\":\"s\"}],2) == []",
+          "explanation": "Blank text adds nothing."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    ingest([],0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "The size is validated even for an empty collection."
+        }
+      ],
+      "hints": [
+        "Blank documents contain no evidence and should create no chunks.",
+        "Iterate over split words with range(0,len(words),size), attaching source and chunk index."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not give chunks from different documents the same id.",
+      "Do not change source paths during text normalization."
+    ],
+    "xp": 50,
+    "tags": [
+      "rag",
+      "ingestion"
+    ]
+  },
+  {
+    "id": "rag-keyword-search",
+    "module": "rag",
+    "section": "Search and vectors",
+    "title": "Build a keyword baseline",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-checkpoint-ingestion"
+    ],
+    "objectives": [
+      "Explain build a keyword baseline in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Keyword retrieval scores shared terms between a query and a document. This baseline is cheap, explainable, and useful for exact names or error codes. We tokenize by lowercasing and splitting on whitespace, then count distinct shared terms with sets. This intentionally simple tokenizer leaves punctuation attached to words; more advanced tokenization should be evaluated as a separate change.\n\nA set prevents repeated query words from inflating the score. A document containing timeout ten times still matches one distinct query term. Real lexical rankers such as BM25 also consider term rarity, frequency saturation, and document length. Our overlap score is not BM25. Its limitations are explicit, which makes it a valuable comparison point for future embedding-based retrieval instead of assuming that a more complex model always helps.",
+    "why": "Support assistants must retrieve exact error codes as well as paraphrased questions. A keyword baseline provides reproducible evidence for comparing search strategies and often remains useful as one branch of hybrid retrieval after semantic vectors are introduced.",
+    "example": {
+      "code": "query_terms = set(\"retry timeout retry\".split())\ndoc_terms = set(\"timeout budget\".split())\nprint(query_terms & doc_terms)  # {'timeout'}",
+      "explanation": "The ampersand computes intersection, retaining only terms found in both sets. Converting the query to a set removes repeated retry tokens before scoring. The result therefore counts distinct shared terms rather than occurrences, a simple contract that can be verified manually and used as a trustworthy baseline during later experiments."
+    },
+    "activity": {
+      "type": "predict",
+      "question": "Distinct matches between \"a a b\" and \"a c\"?",
+      "options": [
+        "1",
+        "2",
+        "3"
+      ],
+      "answer": "1",
+      "explanation": "Set intersection counts the shared distinct term a once."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement keyword_score(query,text). Lowercase and whitespace-split both strings, returning the number of distinct shared tokens. Do not strip punctuation. Empty input scores zero.",
+      "starter": "def keyword_score(query,text):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def keyword_score(query,text):\n    return len(set(query.lower().split()) & set(text.lower().split()))\n",
+      "solutionExplanation": "Set intersection counts the shared distinct term a once. Build lowercase token sets and return their intersection length. Do not describe this overlap score as BM25.",
+      "tests": [
+        {
+          "name": "Case",
+          "code": "assert keyword_score(\"API timeout\",\"api TIMEOUT retry\") == 2",
+          "explanation": "Case is normalized."
+        },
+        {
+          "name": "Duplicate",
+          "code": "assert keyword_score(\"a a b\",\"a a\") == 1",
+          "explanation": "Duplicates do not inflate overlap."
+        },
+        {
+          "name": "Empty",
+          "code": "assert keyword_score(\"\",\"x\") == 0",
+          "explanation": "No query gives no matches."
+        }
+      ],
+      "hints": [
+        "Set intersection counts the shared distinct term a once.",
+        "Build lowercase token sets and return their intersection length."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not describe this overlap score as BM25.",
+      "Do not count duplicate query words as extra evidence."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "keyword-search"
+    ]
+  },
+  {
+    "id": "rag-embeddings",
+    "module": "rag",
+    "section": "Search and vectors",
+    "title": "Make embedding dimensions explicit",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-keyword-search"
+    ],
+    "objectives": [
+      "Explain make embedding dimensions explicit in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "An embedding represents an item as a vector so related items can be compared numerically. Learned text embeddings reflect patterns learned from data; they are not simply word counts. Query and document vectors must come from compatible models and preprocessing. Mixing model versions can produce meaningless similarity even when dimensions happen to match.\n\nWe use a deterministic count vector over a fixed vocabulary to expose the mechanics. This is a teaching representation, not a neural semantic embedding. Each vocabulary word owns a coordinate containing its occurrence count. Store vocabulary order alongside these vectors because a coordinate has no meaning by itself. Real embedding stores need analogous metadata: model version, dimension, normalization policy, and source version. Recording those properties makes later index rebuilds and migrations reproducible rather than mysterious.",
+    "why": "Indexes often outlive an embedding model version. Recording representation metadata prevents silent comparisons between incompatible vectors and supports reproducible migrations, while this count-vector exercise exposes ordering and dimensional assumptions hidden behind a hosted embedding service API.",
+    "example": {
+      "code": "vocab = [\"cat\",\"dog\"]\nwords = \"dog cat dog\".split()\nprint([words.count(term) for term in vocab])  # [1, 2]",
+      "explanation": "Coordinate position follows vocabulary order, not word order in the input sentence. Reordering the vocabulary would reorder the numbers and break comparisons unless every stored vector changed too. This count representation is deliberately interpretable, allowing you to inspect the vector contract before relying on the opaque dimensions of a learned model."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "A count vector is a learned semantic embedding.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "Count vectors demonstrate representation mechanics without learning semantic relationships."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement count_vector(text,vocabulary). Lowercase and whitespace-tokenize text. Return integer counts in the order of the already-lowercase unique vocabulary. Ignore unknown words.",
+      "starter": "def count_vector(text,vocabulary):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def count_vector(text,vocabulary):\n    from collections import Counter\n    counts = Counter(text.lower().split())\n    return [counts[word] for word in vocabulary]\n",
+      "solutionExplanation": "Count vectors demonstrate representation mechanics without learning semantic relationships. Use Counter on normalized words and look up each vocabulary entry in order. Do not mix vocabulary orders across queries and documents.",
+      "tests": [
+        {
+          "name": "Order",
+          "code": "assert count_vector(\"API api cache\",[\"cache\",\"api\"]) == [1,2]",
+          "explanation": "Vocabulary order defines coordinates."
+        },
+        {
+          "name": "Unknown",
+          "code": "assert count_vector(\"other\",[\"api\"]) == [0]",
+          "explanation": "Unknown words are ignored."
+        },
+        {
+          "name": "Empty",
+          "code": "assert count_vector(\"api\",[]) == []",
+          "explanation": "Empty vocabulary gives zero dimensions."
+        }
+      ],
+      "hints": [
+        "Count vectors demonstrate representation mechanics without learning semantic relationships.",
+        "Use Counter on normalized words and look up each vocabulary entry in order."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not mix vocabulary orders across queries and documents.",
+      "Do not label deterministic counts as a real embedding-model response."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "embeddings"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "rag-cosine",
+    "module": "rag",
+    "section": "Search and vectors",
+    "title": "Implement cosine similarity",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-embeddings"
+    ],
+    "objectives": [
+      "Explain implement cosine similarity in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Cosine similarity compares direction rather than length. Multiply matching coordinates and sum to obtain a dot product. Divide that dot product by the product of both magnitudes, where magnitude is the square root of the sum of squared coordinates. Parallel vectors score one, perpendicular vectors score zero, and opposite vectors score minus one.\n\nNormalization matters when long documents produce larger raw counts. Two vectors can point in the same direction even when one is twice as long. A zero vector has no direction, so cosine is undefined; our contract explicitly returns zero. Equal dimensionality is another invariant to validate. Some embedding services pre-normalize vectors, making a dot product equivalent to cosine, but use that shortcut only when the normalization contract is known and tested.",
+    "why": "Implementing cosine once clarifies normalization, dimensions, and zero-vector handling. Those details prevent ranking bugs when an AI system combines custom numerical features with vectors produced by an external embedding service or migrates an existing search index to a new representation.",
+    "example": {
+      "code": "import math\na = [3,4]\nlength = math.sqrt(sum(x*x for x in a))\nprint([x/length for x in a])  # [0.6, 0.8]",
+      "explanation": "Dividing by magnitude creates a unit vector with unchanged direction. The example isolates normalization before comparing two vectors. Squaring coordinates prevents negative values from cancelling in the length, while the square root restores the original scale. A complete similarity function must also handle zero magnitude before performing this division."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Cosine of [1,0] and [0,2]?",
+      "options": [
+        "0",
+        "1",
+        "2"
+      ],
+      "answer": "0",
+      "explanation": "Perpendicular vectors have a zero dot product and therefore zero cosine."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement cosine(a,b). Require equal lengths or raise ValueError. Return 0.0 for either zero magnitude, including empty vectors. Otherwise return dot/(norm(a)*norm(b)) using standard-library math.",
+      "starter": "def cosine(a,b):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def cosine(a,b):\n    import math\n    if len(a) != len(b):\n        raise ValueError(\"Dimension mismatch\")\n    na = math.sqrt(sum(x*x for x in a))\n    nb = math.sqrt(sum(x*x for x in b))\n    return sum(x*y for x,y in zip(a,b))/(na*nb) if na and nb else 0.0\n",
+      "solutionExplanation": "Perpendicular vectors have a zero dot product and therefore zero cosine. Compute both magnitudes, handle zero, and divide the dot product by their product. Do not divide by the sum of magnitudes.",
+      "tests": [
+        {
+          "name": "Parallel",
+          "code": "assert abs(cosine([1,2],[2,4])-1) < 1e-9",
+          "explanation": "Scale does not change direction."
+        },
+        {
+          "name": "Zero",
+          "code": "assert cosine([0,0],[1,2]) == 0.0",
+          "explanation": "Zero vectors follow policy."
+        },
+        {
+          "name": "Dimensions",
+          "code": "try:\n    cosine([1],[1,2])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Zip truncation cannot hide shape mistakes."
+        }
+      ],
+      "hints": [
+        "Perpendicular vectors have a zero dot product and therefore zero cosine.",
+        "Compute both magnitudes, handle zero, and divide the dot product by their product."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not divide by the sum of magnitudes.",
+      "Do not let zip truncate different vector dimensions silently."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "cosine"
+    ],
+    "visual": "vectors"
+  },
+  {
+    "id": "rag-ranking",
+    "module": "rag",
+    "section": "Search and vectors",
+    "title": "Rank candidates with stable ties",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-cosine"
+    ],
+    "objectives": [
+      "Explain rank candidates with stable ties in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A similarity function produces scores, but a retriever must turn them into a bounded ordered list. Top-k retrieval chooses the k highest-ranked candidates. The value of k affects recall, latency, and irrelevant text in the prompt. More evidence is not automatically better: weak passages can distract generation or crowd out useful context.\n\nTies need predictable behavior. Python sorted is stable, so equal keys retain input order; an explicit id tie-breaker is another reasonable policy. We use stable input order so tests can describe exact results. Define edge cases such as zero k and k larger than the candidate count. Return a new list rather than mutating shared cached candidates. These small contract decisions become important when retrieval is reused by evaluators, rerankers, and concurrent requests.",
+    "why": "A support assistant may retrieve hundreds of candidates but have space for only a few passages. Deterministic top-k behavior makes ranking reproducible, supports evaluation comparisons, and prevents unintended changes to shared candidate data used by other stages or simultaneous requests.",
+    "example": {
+      "code": "hits = [{\"id\":\"a\",\"score\":0.4},{\"id\":\"b\",\"score\":0.9}]\nranked = sorted(hits,key=lambda hit:hit[\"score\"],reverse=True)\nprint(ranked[0][\"id\"])  # b",
+      "explanation": "The key extracts a numeric score while sorted creates a new list. Reverse ordering puts larger values first. Records retain their metadata and the original candidate list remains unchanged, so another ranking method can inspect the same inputs during evaluation without being affected by this transformation's ordering choices."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does stable sorting preserve on equal scores?",
+      "options": [
+        "Input order",
+        "Alphabetical ids",
+        "Random order"
+      ],
+      "answer": "Input order",
+      "explanation": "Stable sorting preserves the input order of equal-scoring records."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement top_k(hits,k). Return up to k records sorted by descending score with input-order ties. Nonpositive k returns []. Do not mutate the input list.",
+      "starter": "def top_k(hits,k):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def top_k(hits,k):\n    return sorted(hits,key=lambda hit:hit[\"score\"],reverse=True)[:k] if k > 0 else []\n",
+      "solutionExplanation": "Stable sorting preserves the input order of equal-scoring records. Use sorted with a score key and reverse=True, handling nonpositive k before slicing. Do not mutate shared candidates with in-place sort unintentionally.",
+      "tests": [
+        {
+          "name": "Rank",
+          "code": "assert top_k([{\"id\":\"a\",\"score\":1},{\"id\":\"b\",\"score\":3}],1)[0][\"id\"] == \"b\"",
+          "explanation": "Largest score wins."
+        },
+        {
+          "name": "Ties",
+          "code": "assert [h[\"id\"] for h in top_k([{\"id\":\"b\",\"score\":1},{\"id\":\"a\",\"score\":1}],5)] == [\"b\",\"a\"]",
+          "explanation": "Ties retain order."
+        },
+        {
+          "name": "Zero",
+          "code": "assert top_k([{\"id\":\"a\",\"score\":1}],0) == []",
+          "explanation": "No budget means no evidence."
+        }
+      ],
+      "hints": [
+        "Stable sorting preserves the input order of equal-scoring records.",
+        "Use sorted with a score key and reverse=True, handling nonpositive k before slicing."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not mutate shared candidates with in-place sort unintentionally.",
+      "Do not assume increasing k always improves final answers."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "ranking"
+    ]
+  },
+  {
+    "id": "rag-metadata",
+    "module": "rag",
+    "section": "Search and vectors",
+    "title": "Filter metadata before ranking",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-ranking"
+    ],
+    "objectives": [
+      "Explain filter metadata before ranking in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A vector database stores vectors with ids and metadata and supports search at a scale where scanning every vector is expensive. Approximate nearest-neighbor indexes trade some recall for speed. The database does not automatically decide application access rules or prove that an answer is grounded; those responsibilities require explicit design.\n\nMetadata filters narrow candidates by tenant, language, document type, or publication date. Security-sensitive filters must be enforced by trusted code before results reach the user or model. Filtering only after top-k may discard all selected hits while overlooking eligible documents lower in the ranking. This lesson uses exact equality for a transparent filter. Missing fields do not match required values, and empty filters accept all records. Production authorization must not rely on model-generated instructions or user-supplied filter values alone.",
+    "why": "Enterprise assistants must avoid mixing customer documents or exposing drafts as approved policy. Filtering before ranking preserves eligible recall and provides a clear place to enforce authorized scope independently of query wording, prompt injection, or instructions generated by a model.",
+    "example": {
+      "code": "docs = [{\"id\":\"a\",\"language\":\"en\"},{\"id\":\"b\",\"language\":\"da\"}]\neligible = [d for d in docs if d.get(\"language\") == \"da\"]\nprint(eligible[0][\"id\"])",
+      "explanation": "The filter checks metadata rather than document wording, so the Danish record does not need to contain the word Danish. Dictionary access makes the field dependency visible. A production vector store may execute this predicate internally, but the eligibility rule and its missing-field behavior should retain the same tested meaning."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "When must tenant filtering be enforced?",
+      "options": [
+        "Before evidence reaches the model",
+        "Only after answering",
+        "Only if requested by the model"
+      ],
+      "answer": "Before evidence reaches the model",
+      "explanation": "Trusted filtering must happen before unauthorized evidence reaches a model or user."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement filter_docs(docs,required). Keep records whose metadata dictionary contains every required key with an equal value. Missing metadata is {}. Preserve order; empty required accepts all.",
+      "starter": "def filter_docs(docs,required):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def filter_docs(docs,required):\n    return [doc for doc in docs if all(k in doc.get(\"metadata\",{}) and doc[\"metadata\"][k] == v for k,v in required.items())]\n",
+      "solutionExplanation": "Trusted filtering must happen before unauthorized evidence reaches a model or user. Check key membership and equality for every required pair using all. Do not use a prompt as an access-control boundary.",
+      "tests": [
+        {
+          "name": "Scope",
+          "code": "assert [d[\"id\"] for d in filter_docs([{\"id\":\"a\",\"metadata\":{\"tenant\":\"x\"}},{\"id\":\"b\",\"metadata\":{\"tenant\":\"y\"}}],{\"tenant\":\"x\"})] == [\"a\"]",
+          "explanation": "Only matching tenant survives."
+        },
+        {
+          "name": "Missing",
+          "code": "assert filter_docs([{\"id\":\"a\"}],{\"tenant\":\"x\"}) == []",
+          "explanation": "Missing values do not match."
+        },
+        {
+          "name": "None value",
+          "code": "assert filter_docs([{\"id\":\"a\"}],{\"tenant\":None}) == []",
+          "explanation": "Missing is different from explicitly null."
+        }
+      ],
+      "hints": [
+        "Trusted filtering must happen before unauthorized evidence reaches a model or user.",
+        "Check key membership and equality for every required pair using all."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not use a prompt as an access-control boundary.",
+      "Filtering only after top-k can remove eligible recall."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "metadata",
+      "vector-databases"
+    ]
+  },
+  {
+    "id": "rag-checkpoint-search",
+    "module": "rag",
+    "section": "Checkpoint 2",
+    "title": "Checkpoint: rank eligible evidence",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "rag-metadata"
+    ],
+    "objectives": [
+      "Explain checkpoint: rank eligible evidence in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A retriever combines eligibility and relevance policies. Eligibility determines whether a document may participate; relevance determines how strongly it matches a query. A highly similar document from another tenant must not outrank an authorized document. The policies should remain independently understandable and testable even when one library executes both operations.\n\nThis checkpoint filters first, then applies keyword overlap and stable descending ranking. Discard zero-overlap candidates instead of presenting unrelated text as evidence. Apply the result cap last. This remains exact lexical retrieval, not a semantic model or vector database. Its small deterministic contract acts as a useful oracle for future implementations. The integrated task checks that ordering operations correctly matters just as much as implementing each helper correctly in isolation.",
+    "why": "Retrieval defects often arise from operation order. Combining filtering, scoring, and top-k at one tested boundary verifies that unauthorized or unrelated documents cannot become context merely because the requested result count has not yet been filled by useful evidence.",
+    "example": {
+      "code": "eligible = [{\"id\":\"a\",\"text\":\"retry timeout\"}]\nquery = set(\"timeout\".split())\nprint([(len(query & set(d[\"text\"].split())),d[\"id\"]) for d in eligible])",
+      "explanation": "The example starts from an eligible list, making access control a prerequisite to scoring. Each score comes from visible token overlap and remains paired with its document id. The checkpoint adds eligibility and budgeting around this calculation, including explicit behavior when no candidate contains any query term at all."
+    },
+    "activity": {
+      "type": "order",
+      "question": "Order the operations.",
+      "options": [
+        "Take top-k",
+        "Filter eligibility",
+        "Score relevance"
+      ],
+      "answer": [
+        "Filter eligibility",
+        "Score relevance",
+        "Take top-k"
+      ],
+      "explanation": "Eligibility comes before scoring, and top-k selection comes last."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement retrieve(query,docs,tenant,k). Docs have id,text,tenant. Keep the requested tenant, score distinct lowercase whitespace overlap, discard zero scores, and return up to k ids descending with stable ties. k<=0 returns [].",
+      "starter": "def retrieve(query,docs,tenant,k):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def retrieve(query,docs,tenant,k):\n    if k <= 0:\n        return []\n    terms = set(query.lower().split())\n    scored = []\n    for doc in docs:\n        if doc.get(\"tenant\") == tenant:\n            score = len(terms & set(doc[\"text\"].lower().split()))\n            if score:\n                scored.append((score,doc[\"id\"]))\n    return [i for s,i in sorted(scored,key=lambda pair:pair[0],reverse=True)[:k]]\n",
+      "solutionExplanation": "Eligibility comes before scoring, and top-k selection comes last. Accumulate positive (score,id) pairs only for eligible documents, then stable-sort. Do not fill missing slots with unrelated evidence.",
+      "tests": [
+        {
+          "name": "Scope",
+          "code": "assert retrieve(\"api\",[{\"id\":\"x\",\"text\":\"api\",\"tenant\":\"other\"},{\"id\":\"y\",\"text\":\"api\",\"tenant\":\"mine\"}],\"mine\",2) == [\"y\"]",
+          "explanation": "Unauthorized hits are excluded."
+        },
+        {
+          "name": "Unrelated",
+          "code": "assert retrieve(\"missing\",[{\"id\":\"a\",\"text\":\"api\",\"tenant\":\"t\"}],\"t\",3) == []",
+          "explanation": "Zero matches produce no evidence."
+        },
+        {
+          "name": "Rank",
+          "code": "assert retrieve(\"a b\",[{\"id\":\"a\",\"text\":\"a\",\"tenant\":\"t\"},{\"id\":\"b\",\"text\":\"a b\",\"tenant\":\"t\"}],\"t\",1) == [\"b\"]",
+          "explanation": "Scoring precedes the cap."
+        }
+      ],
+      "hints": [
+        "Eligibility comes before scoring, and top-k selection comes last.",
+        "Accumulate positive (score,id) pairs only for eligible documents, then stable-sort."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not fill missing slots with unrelated evidence.",
+      "Do not rely on the generator to hide unauthorized hits."
+    ],
+    "xp": 50,
+    "tags": [
+      "rag",
+      "retrieval"
+    ]
+  },
+  {
+    "id": "rag-hybrid",
+    "module": "rag",
+    "section": "Better retrieval",
+    "title": "Fuse keyword and vector rankings",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-checkpoint-search"
+    ],
+    "objectives": [
+      "Explain fuse keyword and vector rankings in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Keyword and vector search have complementary strengths. Exact terms work well for codes and names; learned vectors can match paraphrases with few shared words. Hybrid search combines candidates from both. Adding raw scores is risky because one system may emit unbounded lexical scores while another returns cosine values in a narrow interval.\n\nReciprocal rank fusion uses positions instead. At one-based rank r, a document contributes 1 divided by c plus r, where c is a positive smoothing constant. Sum contributions by document id across lists. A document near the top of several lists gains support. This is a heuristic, not a calibrated relevance probability. Input lists must contain unique ids so repeated records cannot earn extra votes from one retriever. Evaluate fused rankings against each individual baseline.",
+    "why": "Documentation assistants need both exact error-code matches and paraphrased questions. Rank fusion combines those retrieval signals without pretending raw lexical and vector scores have the same scale, providing a simple baseline before training or calibrating a more complex ranking model.",
+    "example": {
+      "code": "rank, smoothing = 1, 60\nprint(round(1/(smoothing+rank),5))  # 0.01639",
+      "explanation": "A top-ranked item contributes slightly more than later items, and smoothing controls the size of that advantage. Rank replaces model-specific score units, making contributions comparable across systems. Fusion then adds these values for documents supported by multiple lists; it does not turn them into probabilities or eliminate the need for evaluation."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Why use ranks rather than raw scores?",
+      "options": [
+        "Score scales differ",
+        "Ranks are probabilities",
+        "Evaluation becomes unnecessary"
+      ],
+      "answer": "Score scales differ",
+      "explanation": "Lexical and vector scores may use incompatible scales, while positions share a common meaning."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement rrf(rankings,c=60). Each ordered id list has unique ids. Return id -> summed 1/(c+rank), using one-based ranks. Raise ValueError for c<=0; empty lists contribute nothing.",
+      "starter": "def rrf(rankings,c=60):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def rrf(rankings,c=60):\n    if c <= 0:\n        raise ValueError(\"c must be positive\")\n    scores = {}\n    for ranking in rankings:\n        for rank,doc_id in enumerate(ranking,1):\n            scores[doc_id] = scores.get(doc_id,0.0)+1/(c+rank)\n    return scores\n",
+      "solutionExplanation": "Lexical and vector scores may use incompatible scales, while positions share a common meaning. Enumerate each list from one and accumulate reciprocal contributions by id. Do not interpret fused scores as probabilities.",
+      "tests": [
+        {
+          "name": "Fusion",
+          "code": "assert abs(rrf([[\"a\",\"b\"],[\"b\"]],1)[\"b\"]-(1/3+1/2)) < 1e-9",
+          "explanation": "Contributions combine by id."
+        },
+        {
+          "name": "Empty",
+          "code": "assert rrf([[],[]]) == {}",
+          "explanation": "No rankings produce no scores."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    rrf([],0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "Smoothing is positive."
+        }
+      ],
+      "hints": [
+        "Lexical and vector scores may use incompatible scales, while positions share a common meaning.",
+        "Enumerate each list from one and accumulate reciprocal contributions by id."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not interpret fused scores as probabilities.",
+      "Deduplicate each retriever list before fusion."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "hybrid-search"
+    ]
+  },
+  {
+    "id": "rag-reranking",
+    "module": "rag",
+    "section": "Better retrieval",
+    "title": "Rerank a small candidate set",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-hybrid"
+    ],
+    "objectives": [
+      "Explain rerank a small candidate set in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Retrieval often favors speed over detailed query-document reasoning. Reranking spends more computation on a smaller candidate set to improve precision before generation. A cross-encoder jointly processes a query and candidate, while a bi-encoder computes separate vectors. More detailed comparison can improve relevance but adds latency proportional to candidate count and length.\n\nOur teaching reranker uses an exact phrase bonus plus token overlap. It is deterministic, not a learned cross-encoder. The architecture remains authentic: a broad first pass creates candidates, then a more specific rule reorders those candidates. A reranker cannot recover evidence absent from its input, so evaluate candidate recall separately from final precision. Stable ties make experiments reproducible, and preserving candidate metadata keeps sources available to the final context-building stage.",
+    "why": "A broad retriever can return many passages mentioning authentication while a question specifically concerns token expiry. A second-stage rule focuses limited context, but its latency and dependence on first-stage recall must be measured before assuming it improves the whole application.",
+    "example": {
+      "code": "query = \"token expiry\"\ntext = \"configure token expiry carefully\"\nprint(2 if query in text else 0)  # 2",
+      "explanation": "The phrase check is more specific than individual token overlap: the terms must occur together in the same order. This toy signal illustrates how a second stage changes ranking. It is still a heuristic, because substring matching cannot interpret negation, synonyms, or factual support and must not be described as semantic understanding."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Can reranking recover a missing candidate?",
+      "options": [
+        "No",
+        "Always"
+      ],
+      "answer": "No",
+      "explanation": "Reranking can only evaluate candidates supplied by the first stage."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement rerank(query,candidates). Score {id,text} by distinct lowercase token overlap plus 2 if the nonempty lowercase query is a substring of lowercase text. Return ids by descending score with stable ties.",
+      "starter": "def rerank(query,candidates):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def rerank(query,candidates):\n    q = query.lower()\n    terms = set(q.split())\n    def score(doc):\n        text = doc[\"text\"].lower()\n        return len(terms & set(text.split()))+(2 if q and q in text else 0)\n    return [doc[\"id\"] for doc in sorted(candidates,key=score,reverse=True)]\n",
+      "solutionExplanation": "Reranking can only evaluate candidates supplied by the first stage. Use a scoring helper combining overlap with a guarded phrase bonus, then sorted. Do not call the heuristic a learned cross-encoder.",
+      "tests": [
+        {
+          "name": "Phrase",
+          "code": "assert rerank(\"a b\",[{\"id\":\"x\",\"text\":\"b a\"},{\"id\":\"y\",\"text\":\"a b\"}]) == [\"y\",\"x\"]",
+          "explanation": "Exact phrase adds a bonus."
+        },
+        {
+          "name": "Empty query",
+          "code": "assert rerank(\"\",[{\"id\":\"a\",\"text\":\"x\"}]) == [\"a\"]",
+          "explanation": "Empty strings gain no phrase bonus."
+        },
+        {
+          "name": "Empty candidates",
+          "code": "assert rerank(\"a\",[]) == []",
+          "explanation": "The reranker creates no new evidence."
+        }
+      ],
+      "hints": [
+        "Reranking can only evaluate candidates supplied by the first stage.",
+        "Use a scoring helper combining overlap with a guarded phrase bonus, then sorted."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not call the heuristic a learned cross-encoder.",
+      "Do not ignore candidate recall when evaluating final precision."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "reranking"
+    ]
+  },
+  {
+    "id": "rag-rewriting",
+    "module": "rag",
+    "section": "Better retrieval",
+    "title": "Rewrite queries without losing intent",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-reranking"
+    ],
+    "objectives": [
+      "Explain rewrite queries without losing intent in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "User wording may differ from indexed terminology. Rewriting can expand acronyms, resolve conversational references, or produce several search formulations. A rewrite is an intermediate search artifact, not a replacement for the user's intent. Preserve the original question for final answering and evaluation. An invented assumption can steer retrieval toward convincing but irrelevant evidence.\n\nControlled dictionary expansion demonstrates the mechanics. When a query contains SLA, append a known expansion while retaining the original words. Exact acronym matching still works and the full phrase provides another lexical route. Model-based rewriting is more flexible but should be evaluated against original-query retrieval, especially for names, dates, negations, and constraints. Deduplicating expansions prevents repeated tokens from causing unnecessary growth. This lesson deliberately avoids calling a model so every rewrite is auditable.",
+    "why": "A user may type an internal acronym while documentation uses its full name. Controlled expansion increases lexical reach without silently replacing the request, offering an auditable baseline for evaluating whether model-generated rewrites improve retrieval or introduce meaning-changing query drift.",
+    "example": {
+      "code": "aliases = {\"sla\":\"service level agreement\"}\nquery = \"SLA policy\"\nprint(query+\" \"+aliases[query.split()[0].lower()])",
+      "explanation": "The original query stays at the beginning, preserving exact-token matching. The expansion supplies alternate vocabulary while leaving final answer intent unchanged. Looking up a controlled dictionary entry makes the rewrite traceable and avoids inventing assumptions, dates, or synonyms that were never authorized by the user's actual request or application policy."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What must rewriting preserve?",
+      "options": [
+        "Original intent",
+        "Only the longest rewrite",
+        "Invented assumptions"
+      ],
+      "answer": "Original intent",
+      "explanation": "A rewrite should preserve original intent and constraints."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement expand_query(query,aliases). Collapse query whitespace, preserve case, and append nonempty aliases for distinct lowercase tokens in first-encounter order. Expand repeated tokens once. Empty query returns \"\".",
+      "starter": "def expand_query(query,aliases):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def expand_query(query,aliases):\n    base = \" \".join(query.split())\n    extras, seen = [], set()\n    for token in base.lower().split():\n        if token not in seen and aliases.get(token):\n            extras.append(aliases[token])\n        seen.add(token)\n    return \" \".join([base]+extras).strip()\n",
+      "solutionExplanation": "A rewrite should preserve original intent and constraints. Keep normalized original text, then track expanded lowercase tokens in a set. Do not overwrite the original question with an unverified rewrite.",
+      "tests": [
+        {
+          "name": "Expand",
+          "code": "assert expand_query(\" SLA policy \",{\"sla\":\"service level agreement\"}) == \"SLA policy service level agreement\"",
+          "explanation": "Original wording remains."
+        },
+        {
+          "name": "Once",
+          "code": "assert expand_query(\"api api\",{\"api\":\"interface\"}) == \"api api interface\"",
+          "explanation": "Repeated tokens expand once."
+        },
+        {
+          "name": "Empty",
+          "code": "assert expand_query(\"\",{\"api\":\"interface\"}) == \"\"",
+          "explanation": "Empty input stays empty."
+        }
+      ],
+      "hints": [
+        "A rewrite should preserve original intent and constraints.",
+        "Keep normalized original text, then track expanded lowercase tokens in a set."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not overwrite the original question with an unverified rewrite.",
+      "Do not remove negations or dates during normalization."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "query-rewriting"
+    ]
+  },
+  {
+    "id": "rag-context",
+    "module": "rag",
+    "section": "Grounded generation",
+    "title": "Build bounded evidence context",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-rewriting"
+    ],
+    "objectives": [
+      "Explain build bounded evidence context in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A RAG prompt combines trusted application instructions, a user question, and untrusted retrieved content. Keep these roles distinguishable. A document can contain instruction-like text, but being retrieved does not grant authority to override application policy. Delimiters and structured fields help communicate that distinction; they are not a complete prompt-injection defense.\n\nContext has a budget. Reserve room for instructions, the question, and the answer rather than spending every token on documents. Our exercise uses characters as a transparent approximation; production token budgeting needs the target tokenizer. Select complete passages in ranking order, skipping those that do not fit. Count citation formatting and separators, not just source text. Avoid cutting a passage in a way that removes a condition or changes the meaning of its claim.",
+    "why": "An assistant can fail after successful retrieval if prompt assembly truncates an essential condition or confuses document instructions with trusted rules. Explicit budgeting and evidence boundaries make this final assembly stage independently testable and easier to inspect during debugging and security review.",
+    "example": {
+      "code": "hit = {\"id\":\"policy-7\",\"text\":\"Refunds require a receipt.\"}\nblock = f'[{hit[\"id\"]}] {hit[\"text\"]}'\nprint(len(block))",
+      "explanation": "The rendered passage includes citation overhead, so the budget must measure what is actually passed onward. Counting raw document text alone underestimates that size. This example uses characters for clarity; a deployed model tokenizer may count the same string differently depending on language, punctuation, and model-specific tokenization rules."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Are retrieved instructions trusted commands?",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "answer": "No",
+      "explanation": "Retrieved content is untrusted data even when it resembles an instruction."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement select_context(hits,budget). Render \"[id] text\" blocks and accept complete blocks in order when their joined character count including newlines fits budget. Skip oversized blocks and continue. Return the joined string.",
+      "starter": "def select_context(hits,budget):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def select_context(hits,budget):\n    blocks, used = [], 0\n    for hit in hits:\n        block = f'[{hit[\"id\"]}] {hit[\"text\"]}'\n        cost = len(block)+bool(blocks)\n        if used+cost <= budget:\n            blocks.append(block)\n            used += cost\n    return \"\\n\".join(blocks)\n",
+      "solutionExplanation": "Retrieved content is untrusted data even when it resembles an instruction. Compute formatted block cost plus one separator after the first accepted block. Do not call character counts exact token counts.",
+      "tests": [
+        {
+          "name": "Budget",
+          "code": "assert select_context([{\"id\":\"a\",\"text\":\"x\"},{\"id\":\"b\",\"text\":\"y\"}],11) == \"[a] x\\n[b] y\"",
+          "explanation": "Newline cost is counted."
+        },
+        {
+          "name": "Skip",
+          "code": "assert select_context([{\"id\":\"a\",\"text\":\"long\"},{\"id\":\"b\",\"text\":\"x\"}],5) == \"[b] x\"",
+          "explanation": "Later fitting evidence is considered."
+        },
+        {
+          "name": "Zero",
+          "code": "assert select_context([{\"id\":\"a\",\"text\":\"x\"}],0) == \"\"",
+          "explanation": "No space means no evidence."
+        }
+      ],
+      "hints": [
+        "Retrieved content is untrusted data even when it resembles an instruction.",
+        "Compute formatted block cost plus one separator after the first accepted block."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not call character counts exact token counts.",
+      "Do not treat delimiters alone as an authorization boundary."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "context",
+      "prompts"
+    ]
+  },
+  {
+    "id": "rag-grounding",
+    "module": "rag",
+    "section": "Grounded generation",
+    "title": "Cite evidence and abstain when needed",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-context"
+    ],
+    "objectives": [
+      "Explain cite evidence and abstain when needed in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "A grounded answer connects factual claims to supporting evidence. A citation id points to a source but does not prove that the source supports a claim. Validation has two levels: structural checks ensure cited ids were retrieved, while semantic checks assess whether evidence entails the answer. Human review or an evaluated model judge may be needed for that harder second level.\n\nAbstention is useful when evidence is missing or insufficient. A clear not-found state is better than an invented policy. This lesson implements a simulated extractive responder that quotes a selected passage and cites its id. There is no LLM call. The transparent behavior keeps provenance observable and tests missing-evidence handling. A future real-model adapter must preserve the same contract without assuming generation will automatically obey every instruction.",
+    "why": "Users need to inspect sources and recognize missing evidence before relying on an AI answer. Structural citation checks and explicit abstention provide testable safeguards, while separate semantic evaluation is needed to establish that each generated factual claim is actually supported by its cited passage.",
+    "example": {
+      "code": "hit = {\"id\":\"handbook-2\",\"text\":\"Reports are due Friday.\"}\nresponse = {\"answer\":hit[\"text\"],\"citations\":[hit[\"id\"]],\"mode\":\"simulated\"}\nprint(response[\"citations\"])",
+      "explanation": "The response copies source text and labels its behavior simulated. Its citation references the same retrieved record, making provenance inspectable. A real model could paraphrase or combine sources, but would need additional validation because a citation can look legitimate while the accompanying claim is unsupported or changes the source's meaning."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "An existing citation id guarantees factual support.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "False",
+      "explanation": "A structurally valid citation still needs a semantic support check."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement grounded_reply(hits). No hits returns {\"answer\":\"Not enough evidence.\",\"citations\":[],\"mode\":\"simulated\"}. Otherwise quote first hit text and cite its id. No model call is performed.",
+      "starter": "def grounded_reply(hits):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def grounded_reply(hits):\n    if not hits:\n        return {\"answer\":\"Not enough evidence.\",\"citations\":[],\"mode\":\"simulated\"}\n    return {\"answer\":hits[0][\"text\"],\"citations\":[hits[0][\"id\"]],\"mode\":\"simulated\"}\n",
+      "solutionExplanation": "A structurally valid citation still needs a semantic support check. Handle empty hits first, then copy the first text and id into a simulated response. Do not describe this extractor as an executed LLM.",
+      "tests": [
+        {
+          "name": "Quote",
+          "code": "assert grounded_reply([{\"id\":\"a\",\"text\":\"Fact\"}])[\"answer\"] == \"Fact\"",
+          "explanation": "The answer copies evidence."
+        },
+        {
+          "name": "Cite",
+          "code": "assert grounded_reply([{\"id\":\"a\",\"text\":\"Fact\"}])[\"citations\"] == [\"a\"]",
+          "explanation": "Citation comes from the hit."
+        },
+        {
+          "name": "Abstain",
+          "code": "assert grounded_reply([]) == {\"answer\":\"Not enough evidence.\",\"citations\":[],\"mode\":\"simulated\"}",
+          "explanation": "Missing evidence is explicit."
+        }
+      ],
+      "hints": [
+        "A structurally valid citation still needs a semantic support check.",
+        "Handle empty hits first, then copy the first text and id into a simulated response."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not describe this extractor as an executed LLM.",
+      "Do not invent citations when retrieval finds nothing."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "citations",
+      "abstention"
+    ]
+  },
+  {
+    "id": "rag-checkpoint-grounding",
+    "module": "rag",
+    "section": "Checkpoint 3",
+    "title": "Checkpoint: bounded evidence response",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "rag-grounding"
+    ],
+    "objectives": [
+      "Explain checkpoint: bounded evidence response in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "This checkpoint combines deduplication, budgeting, and transparent response construction. Retrieval can return duplicate chunks or passages larger than the context budget. Passing every result onward wastes space and makes citations confusing. We will deduplicate ids in encounter order, accept complete text passages that fit, and produce a simulated response from accepted evidence only.\n\nEvery citation must belong to an accepted passage. Budgeting includes separators because those characters exist in the assembled context. If nothing fits, abstain instead of using an excluded passage as a fallback. These checks do not solve semantic grounding for arbitrary generated text, but they establish a structural contract for a future model adapter. The tests deliberately combine edge cases so you must reason about the order of operations rather than only copy isolated helpers.",
+    "why": "Evidence packaging produces subtle bugs: duplicates consume context, excluded passages receive citations, or empty context leads to invented fallback text. This exercise makes those boundary conditions visible and testable before a real model introduces additional uncertainty into response generation.",
+    "example": {
+      "code": "seen, unique = set(), []\nfor value in [\"a\",\"a\",\"b\"]:\n    if value not in seen:\n        unique.append(value)\n        seen.add(value)\nprint(unique)",
+      "explanation": "A set provides membership checks while a separate list preserves encounter order. Using a set alone would lose the ranking order needed for evidence selection. The checkpoint applies the pattern to records and budgets, requiring the first occurrence of an id to determine which text represents that source throughout assembly."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "No complete passage fits. What should happen?",
+      "options": [
+        "Abstain",
+        "Cite excluded text",
+        "Invent a shorter fact"
+      ],
+      "answer": "Abstain",
+      "explanation": "When no usable passage fits, abstention preserves the evidence contract."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement evidence_response(hits,budget). Deduplicate ids by first occurrence. Accept complete text strings in order if their joined length including newlines fits. Return {answer:joined_text,citations:accepted_ids,mode:\"simulated\"}. No accepted text means answer \"Not enough evidence.\".",
+      "starter": "def evidence_response(hits,budget):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def evidence_response(hits,budget):\n    seen, texts, ids, used = set(), [], [], 0\n    for hit in hits:\n        if hit[\"id\"] in seen:\n            continue\n        seen.add(hit[\"id\"])\n        cost = len(hit[\"text\"])+bool(texts)\n        if used+cost <= budget:\n            texts.append(hit[\"text\"])\n            ids.append(hit[\"id\"])\n            used += cost\n    return {\"answer\":\"\\n\".join(texts) if texts else \"Not enough evidence.\",\"citations\":ids,\"mode\":\"simulated\"}\n",
+      "solutionExplanation": "When no usable passage fits, abstention preserves the evidence contract. Track seen ids, accepted texts, accepted ids, and joined-length cost separately. Do not cite records excluded by budget.",
+      "tests": [
+        {
+          "name": "Duplicate",
+          "code": "assert evidence_response([{\"id\":\"a\",\"text\":\"x\"},{\"id\":\"a\",\"text\":\"y\"}],10)[\"answer\"] == \"x\"",
+          "explanation": "First occurrence owns the id."
+        },
+        {
+          "name": "Budget",
+          "code": "assert evidence_response([{\"id\":\"a\",\"text\":\"abc\"},{\"id\":\"b\",\"text\":\"de\"}],5)[\"citations\"] == [\"a\"]",
+          "explanation": "Newline consumes budget."
+        },
+        {
+          "name": "Abstain",
+          "code": "assert evidence_response([{\"id\":\"a\",\"text\":\"large\"}],1)[\"answer\"] == \"Not enough evidence.\"",
+          "explanation": "Excluded text cannot become an answer."
+        }
+      ],
+      "hints": [
+        "When no usable passage fits, abstention preserves the evidence contract.",
+        "Track seen ids, accepted texts, accepted ids, and joined-length cost separately."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not cite records excluded by budget.",
+      "Do not use unordered sets as the final ranked context."
+    ],
+    "xp": 50,
+    "tags": [
+      "rag",
+      "context",
+      "citations"
+    ]
+  },
+  {
+    "id": "rag-retrieval-metrics",
+    "module": "rag",
+    "section": "Evaluation and operation",
+    "title": "Measure retrieval precision and recall",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-checkpoint-grounding"
+    ],
+    "objectives": [
+      "Explain measure retrieval precision and recall in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Retrieval evaluation needs queries with judged relevant documents. Precision measures what fraction of retrieved documents are relevant; recall measures what fraction of relevant documents were retrieved. A retriever returning one perfect hit can have high precision while missing many useful passages. A broad retriever can achieve high recall with substantial noise.\n\nCompare systems at the same k using the same queries and relevance judgments. Deduplicate ids before set-based scoring so repeated hits cannot inflate results. Define empty-set behavior explicitly. Here a zero denominator produces zero; another convention could exclude those cases, but it must be documented. Aggregate across representative categories instead of trusting one attractive example. These metrics evaluate retrieval rather than final answer quality, so they should complement, not replace, separate checks of generation and grounding.",
+    "why": "Without retrieval labels, teams may blame a model for answers that never received the necessary evidence. Precision and recall isolate search behavior, show the effects of top-k and filters, and direct improvements toward ingestion, candidate generation, or ranking rather than speculative prompt changes.",
+    "example": {
+      "code": "retrieved, relevant = {\"a\",\"b\"}, {\"b\",\"c\",\"d\"}\nhits = len(retrieved & relevant)\nprint(hits/len(retrieved))  # precision 0.5",
+      "explanation": "The intersection counts ids that are both retrieved and relevant. Dividing by retrieved count measures result-set cleanliness; dividing by relevant count measures evidence coverage. Sets ensure duplicate ids cannot count as repeated successes. These two denominators explain why one retrieval change can improve precision while simultaneously lowering recall."
+    },
+    "activity": {
+      "type": "match",
+      "question": "Match metrics to denominators.",
+      "options": [
+        "Precision",
+        "Recall"
+      ],
+      "answer": [
+        "Retrieved documents",
+        "Relevant documents"
+      ],
+      "explanation": "Precision divides by retrieved count; recall divides by relevant count."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement retrieval_metrics(retrieved,relevant). Treat ids as sets. Return {\"precision\":hits/retrieved_count,\"recall\":hits/relevant_count}, using 0.0 for each zero denominator.",
+      "starter": "def retrieval_metrics(retrieved,relevant):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def retrieval_metrics(retrieved,relevant):\n    found, gold = set(retrieved), set(relevant)\n    hits = len(found & gold)\n    return {\"precision\":hits/len(found) if found else 0.0,\"recall\":hits/len(gold) if gold else 0.0}\n",
+      "solutionExplanation": "Precision divides by retrieved count; recall divides by relevant count. Use set intersection and guard both denominators independently. Do not evaluate only examples used for tuning.",
+      "tests": [
+        {
+          "name": "Metrics",
+          "code": "assert retrieval_metrics([\"a\",\"b\"],[\"b\",\"c\",\"d\"]) == {\"precision\":0.5,\"recall\":1/3}",
+          "explanation": "Different denominators measure different properties."
+        },
+        {
+          "name": "Duplicates",
+          "code": "assert retrieval_metrics([\"a\",\"a\"],[\"a\"]) == {\"precision\":1.0,\"recall\":1.0}",
+          "explanation": "Duplicates do not inflate metrics."
+        },
+        {
+          "name": "Empty",
+          "code": "assert retrieval_metrics([],[]) == {\"precision\":0.0,\"recall\":0.0}",
+          "explanation": "Empty convention is explicit."
+        }
+      ],
+      "hints": [
+        "Precision divides by retrieved count; recall divides by relevant count.",
+        "Use set intersection and guard both denominators independently."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not evaluate only examples used for tuning.",
+      "Do not confuse high precision with complete coverage."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "evaluation"
+    ]
+  },
+  {
+    "id": "rag-answer-metrics",
+    "module": "rag",
+    "section": "Evaluation and operation",
+    "title": "Evaluate citation structure honestly",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-retrieval-metrics"
+    ],
+    "objectives": [
+      "Explain evaluate citation structure honestly in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Answer evaluation needs more than a helpfulness score. Useful dimensions include support, completeness, relevance, appropriate abstention, and citation correctness. An answer can be fluent but unsupported, or supported yet fail to address the question. Separate dimensions prevent one improvement from hiding a regression elsewhere.\n\nSome checks are deterministic. Verify that every cited id belongs to retrieved evidence and that an abstention does not cite sources it never used. Semantic support needs stronger methods: labeled examples, human review, or an evaluated model judge with a clear rubric. Judges are fallible and can be sensitive to wording and ordering. This lesson implements structural citation checking only. Naming that limit prevents an easy proxy from masquerading as factual correctness and helps design a more honest production evaluation dashboard.",
+    "why": "RAG evaluation should distinguish missing evidence, unsupported claims, and malformed citations. Structural validation is inexpensive enough to run routinely, while a separate semantic review process supplies the evidence needed before calling the final answer grounded, complete, or factually correct.",
+    "example": {
+      "code": "available = {\"doc-1\",\"doc-2\"}\ncited = [\"doc-2\",\"invented\"]\nprint([item for item in cited if item not in available])",
+      "explanation": "Membership testing catches a fabricated source id without understanding answer text. It cannot tell whether doc-2 supports the associated claim, which remains a separate semantic question. This distinction helps engineers label metrics accurately and avoid treating a convenient structural assertion as a complete evaluation of grounding or factual accuracy."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What does structural validation prove?",
+      "options": [
+        "Cited ids exist in evidence",
+        "All claims are true",
+        "The question is fully answered"
+      ],
+      "answer": "Cited ids exist in evidence",
+      "explanation": "This validator proves source membership, not truth or completeness."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement citation_report(citations,available_ids). Return {\"valid\":bool,\"unknown\":list}. Report distinct unavailable ids in encounter order. Empty citations are structurally valid; do not assess factual support.",
+      "starter": "def citation_report(citations,available_ids):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def citation_report(citations,available_ids):\n    available, unknown = set(available_ids), []\n    for item in citations:\n        if item not in available and item not in unknown:\n            unknown.append(item)\n    return {\"valid\":not unknown,\"unknown\":unknown}\n",
+      "solutionExplanation": "This validator proves source membership, not truth or completeness. Use an available-id set and retain unknown ids in first-occurrence order. Do not call the result factual accuracy.",
+      "tests": [
+        {
+          "name": "Valid",
+          "code": "assert citation_report([\"a\"],[\"a\"]) == {\"valid\":True,\"unknown\":[]}",
+          "explanation": "Known ids pass."
+        },
+        {
+          "name": "Unknown",
+          "code": "assert citation_report([\"x\",\"x\",\"y\"],[\"a\"]) == {\"valid\":False,\"unknown\":[\"x\",\"y\"]}",
+          "explanation": "Unknown ids appear once."
+        },
+        {
+          "name": "Empty",
+          "code": "assert citation_report([],[]) == {\"valid\":True,\"unknown\":[]}",
+          "explanation": "No citations is structurally valid."
+        }
+      ],
+      "hints": [
+        "This validator proves source membership, not truth or completeness.",
+        "Use an available-id set and retain unknown ids in first-occurrence order."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not call the result factual accuracy.",
+      "Do not treat model judges as infallible ground truth."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "citations",
+      "evaluation"
+    ]
+  },
+  {
+    "id": "rag-failures",
+    "module": "rag",
+    "section": "Evaluation and operation",
+    "title": "Diagnose the stage that failed",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-answer-metrics"
+    ],
+    "objectives": [
+      "Explain diagnose the stage that failed in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "RAG failures occur at several boundaries. A source may lack the answer, parsing may lose it, chunking may separate a condition from its claim, retrieval may miss a useful chunk, or generation may ignore good evidence. Treating every wrong answer as a prompt problem wastes time and can conceal upstream defects.\n\nA useful trace records source ids, candidate ids, selected-context ids, timing, and evaluation outcomes without unnecessary sensitive content. Compare candidate recall with selected-context recall. If candidates contain evidence but final context does not, inspect reranking and budgeting. If context contains evidence but the answer fails, inspect generation and evaluation. Our exercise encodes this triage with explicit booleans. Real incidents may have several causes, but reporting the earliest observed failure provides a practical place to begin investigation.",
+    "why": "Engineers need actionable categories instead of a pile of disappointing answers. Stage-aware triage directs work toward ingestion, search, context assembly, or generation, making it possible to measure whether a targeted fix improves the affected query category over repeated evaluations.",
+    "example": {
+      "code": "trace = {\"source_has_answer\":True,\"retrieved_answer\":False}\nif trace[\"source_has_answer\"] and not trace[\"retrieved_answer\"]:\n    print(\"Inspect retrieval\")",
+      "explanation": "The source check distinguishes missing knowledge from search failure. Without it, retrieval could be blamed for not finding information that was never indexed. This example illustrates one branch; the exercise extends the same reasoning through context selection and generation while keeping every diagnosis tied to an observed stage signal."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Evidence was retrieved but removed by budgeting. Inspect what?",
+      "options": [
+        "Context selection",
+        "Pretraining",
+        "Source acquisition"
+      ],
+      "answer": "Context selection",
+      "explanation": "Retrieved evidence removed by budgeting indicates a context-selection failure."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement diagnose(source,retrieved,selected,correct). Return the first failing stage: \"source\", \"retrieval\", \"context\", \"generation\"; return \"ok\" if every boolean is true.",
+      "starter": "def diagnose(source,retrieved,selected,correct):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def diagnose(source,retrieved,selected,correct):\n    for passed,stage in [(source,\"source\"),(retrieved,\"retrieval\"),(selected,\"context\"),(correct,\"generation\")]:\n        if not passed:\n            return stage\n    return \"ok\"\n",
+      "solutionExplanation": "Retrieved evidence removed by budgeting indicates a context-selection failure. Walk stage checks in order and return the first false signal. Do not tune prompts before checking whether evidence reached the model.",
+      "tests": [
+        {
+          "name": "Context",
+          "code": "assert diagnose(True,True,False,False) == \"context\"",
+          "explanation": "Evidence can disappear after search."
+        },
+        {
+          "name": "First",
+          "code": "assert diagnose(False,False,False,False) == \"source\"",
+          "explanation": "Earliest failure is reported."
+        },
+        {
+          "name": "Success",
+          "code": "assert diagnose(True,True,True,True) == \"ok\"",
+          "explanation": "All stages passed."
+        }
+      ],
+      "hints": [
+        "Retrieved evidence removed by budgeting indicates a context-selection failure.",
+        "Walk stage checks in order and return the first false signal."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not tune prompts before checking whether evidence reached the model.",
+      "Do not log raw private source text by default."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "debugging"
+    ]
+  },
+  {
+    "id": "rag-performance",
+    "module": "rag",
+    "section": "Evaluation and operation",
+    "title": "Budget latency, cost, and freshness",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-failures"
+    ],
+    "objectives": [
+      "Explain budget latency, cost, and freshness in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "RAG requests spend time in query processing, retrieval, reranking, and generation. Sequential stage latencies add; parallel branches contribute roughly the slowest branch plus coordination overhead. Measure distributions rather than averages alone because users experience slow-tail requests too. Embedding work, storage, token counts, and model calls also contribute to cost.\n\nCaching reduces repeated work only when the key includes every input that changes the result. Retrieval keys may need tenant, normalized query, index version, embedding model, and filters. Old cache entries can return obsolete policy even when ranking works correctly. We use stable JSON serialization to make key dependencies visible. This lesson does not implement eviction or promise a measured speedup; it establishes correctness before optimization. A production cache also needs expiration, size limits, observability, and a documented invalidation strategy.",
+    "why": "Frequently used assistants must stay responsive without serving stale or cross-tenant answers. A clear cache-key contract makes correctness dependencies explicit before adding storage and expiration, providing a practical foundation for cost control that can later be measured under representative workload conditions.",
+    "example": {
+      "code": "import json\nprint(json.dumps({\"query\":\"reset password\",\"index\":\"v2\"},sort_keys=True,separators=(\",\",\":\")))",
+      "explanation": "Sorting object keys makes serialization independent of dictionary insertion order. Compact separators avoid irrelevant spacing differences, while index version becomes part of identity rather than an informal note. A later cache can use this string directly or hash it, preserving the same invalidation semantics when a document collection changes."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What should invalidate retrieval cache?",
+      "options": [
+        "New index version",
+        "Button color",
+        "Another identical tab"
+      ],
+      "answer": "New index version",
+      "explanation": "A new index version can change evidence and must invalidate retrieval results."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement cache_key(tenant,query,index_version,filters). Return sorted-key compact JSON with those fields, normalizing query to lowercase collapsed whitespace. Filters are JSON-serializable. Do not use Python hash().",
+      "starter": "def cache_key(tenant,query,index_version,filters):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def cache_key(tenant,query,index_version,filters):\n    import json\n    data = {\"tenant\":tenant,\"query\":\" \".join(query.lower().split()),\"index_version\":index_version,\"filters\":filters}\n    return json.dumps(data,sort_keys=True,separators=(\",\",\":\"))\n",
+      "solutionExplanation": "A new index version can change evidence and must invalidate retrieval results. Serialize every correctness-relevant field with sorted keys and compact separators. Do not omit tenant from a shared cache key.",
+      "tests": [
+        {
+          "name": "Normalize",
+          "code": "assert cache_key(\"t\",\" A B \",\"v1\",{}) == cache_key(\"t\",\"a  b\",\"v1\",{})",
+          "explanation": "Equivalent normalized queries share keys."
+        },
+        {
+          "name": "Version",
+          "code": "assert cache_key(\"t\",\"a\",\"v1\",{}) != cache_key(\"t\",\"a\",\"v2\",{})",
+          "explanation": "Index changes invalidate."
+        },
+        {
+          "name": "Tenant",
+          "code": "assert cache_key(\"x\",\"a\",\"v1\",{}) != cache_key(\"y\",\"a\",\"v1\",{})",
+          "explanation": "Tenant scope remains distinct."
+        }
+      ],
+      "hints": [
+        "A new index version can change evidence and must invalidate retrieval results.",
+        "Serialize every correctness-relevant field with sorted keys and compact separators."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not omit tenant from a shared cache key.",
+      "Do not assume average latency represents slow-tail behavior."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "performance",
+      "caching"
+    ]
+  },
+  {
+    "id": "rag-advanced-patterns",
+    "module": "rag",
+    "section": "Evaluation and operation",
+    "title": "Expand parent context and version indexes",
+    "minutes": 8,
+    "difficulty": "Intermediate",
+    "kind": "lesson",
+    "prerequisites": [
+      "rag-performance"
+    ],
+    "objectives": [
+      "Explain expand parent context and version indexes in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "Advanced RAG patterns address specific failures rather than replacing a simple pipeline with complexity. Parent-child retrieval searches small chunks for precision and supplies larger parent sections for context. Multi-query retrieval searches several formulations. Hierarchical retrieval first selects documents or sections, then searches within them. Each pattern should earn its complexity through evaluation.\n\nProduction adds lifecycle requirements: reindex changed sources, remove deleted content, keep embedding versions compatible, enforce authorization, and monitor latency and failures. Parent expansion must preserve ranking order while deduplicating repeated parents and respecting the final budget. Otherwise similar child hits crowd out useful sources. Our exercise isolates parent expansion before introducing a database or asynchronous indexer. Missing parents have an explicit skip policy, making index inconsistency observable rather than silently fabricating evidence that does not exist.",
+    "why": "A retrieved sentence can omit the condition that makes it correct. Parent expansion restores context while deduplication prevents repeated child hits from consuming the prompt. Versioned indexing and deletion policies ensure the richer context still reflects current, authorized source material in a production system.",
+    "example": {
+      "code": "children = [{\"id\":\"a:0\",\"parent\":\"a\"},{\"id\":\"a:1\",\"parent\":\"a\"}]\nprint([child[\"parent\"] for child in children])  # ['a','a']",
+      "explanation": "Two useful child chunks can point to one parent. Returning that parent twice duplicates evidence and wastes space, so expansion requires ordered deduplication. The parent mapping introduces another contract: missing records need a documented policy rather than a fabricated source, especially while an index is being rebuilt or updated."
+    },
+    "activity": {
+      "type": "true-false",
+      "question": "Parent-child retrieval may return larger context than it searches.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "answer": "True",
+      "explanation": "Small child chunks can locate evidence while larger parents supply context."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement expand_parents(child_hits,parents). Hits contain parent; parents maps ids to text. Return {id,text} records in first-parent encounter order, skipping duplicates and missing parents. Do not mutate inputs.",
+      "starter": "def expand_parents(child_hits,parents):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def expand_parents(child_hits,parents):\n    seen, result = set(), []\n    for hit in child_hits:\n        parent = hit[\"parent\"]\n        if parent in parents and parent not in seen:\n            result.append({\"id\":parent,\"text\":parents[parent]})\n            seen.add(parent)\n    return result\n",
+      "solutionExplanation": "Small child chunks can locate evidence while larger parents supply context. Use a seen set, appending only existing unseen parent records. Do not add complex patterns without evaluating a specific failure.",
+      "tests": [
+        {
+          "name": "Deduplicate",
+          "code": "assert expand_parents([{\"parent\":\"a\"},{\"parent\":\"a\"}],{\"a\":\"Section\"}) == [{\"id\":\"a\",\"text\":\"Section\"}]",
+          "explanation": "Repeated children expand once."
+        },
+        {
+          "name": "Missing",
+          "code": "assert expand_parents([{\"parent\":\"x\"}],{}) == []",
+          "explanation": "Missing parents are skipped."
+        },
+        {
+          "name": "Order",
+          "code": "assert [x[\"id\"] for x in expand_parents([{\"parent\":\"b\"},{\"parent\":\"a\"}],{\"a\":\"A\",\"b\":\"B\"})] == [\"b\",\"a\"]",
+          "explanation": "First encounter preserves rank."
+        }
+      ],
+      "hints": [
+        "Small child chunks can locate evidence while larger parents supply context.",
+        "Use a seen set, appending only existing unseen parent records."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not add complex patterns without evaluating a specific failure.",
+      "Do not leave deleted sources searchable indefinitely."
+    ],
+    "xp": 20,
+    "tags": [
+      "rag",
+      "advanced-rag",
+      "production"
+    ]
+  },
+  {
+    "id": "rag-checkpoint-evaluation",
+    "module": "rag",
+    "section": "Checkpoint 4",
+    "title": "Checkpoint: evaluate the evidence pipeline",
+    "minutes": 10,
+    "difficulty": "Intermediate",
+    "kind": "checkpoint",
+    "prerequisites": [
+      "rag-advanced-patterns"
+    ],
+    "objectives": [
+      "Explain checkpoint: evaluate the evidence pipeline in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "This checkpoint combines retrieval evaluation with structural answer validation. These measurements belong in one report but cannot be collapsed into a claim that every answer is correct. A system may retrieve all relevant documents and still generate an unsupported answer. A valid citation can also point to a document irrelevant to the question.\n\nFor each case, compare retrieved ids to judged relevant ids, compute recall with an explicit empty-set convention, and check citations against retrieval. Aggregate mean recall and the fraction of structurally valid responses. Evaluation queries should represent real use and remain separate from tuning examples. Store per-case results in a production evaluator so a good average cannot hide a broken high-risk category. Here we implement the aggregate contract while keeping its two meanings distinct in names and tests.",
+    "why": "Teams need repeatable evidence when changing chunk size, embeddings, or prompts. This report exposes retrieval coverage and citation structure side by side, while honest metric names prevent a convenient structural check from being mistaken for factual quality or complete answer correctness.",
+    "example": {
+      "code": "case = {\"retrieved\":[\"a\"],\"relevant\":[\"a\",\"b\"],\"citations\":[\"a\"]}\nprint(len(set(case[\"retrieved\"]) & set(case[\"relevant\"]))/len(set(case[\"relevant\"])))",
+      "explanation": "This case retrieves half the known evidence even though its citation is structurally available. That difference illustrates why separate metrics are necessary. The checkpoint applies the calculation to multiple cases, includes empty-set conventions, and handles an empty dataset without inventing a perfect score unsupported by any observed examples."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Perfect retrieval recall guarantees what?",
+      "options": [
+        "All labeled relevant ids were retrieved",
+        "All claims are supported",
+        "The answer is concise"
+      ],
+      "answer": "All labeled relevant ids were retrieved",
+      "explanation": "Perfect recall covers labeled evidence but does not establish generated factual support."
+    },
+    "exercise": {
+      "type": "function",
+      "prompt": "Implement evaluate_cases(cases), each with retrieved,relevant,citations lists. Return mean_recall and citation_valid_rate. Recall uses sets and is 0 for empty relevant; citations are valid if all are retrieved. Empty cases returns both 0.0.",
+      "starter": "def evaluate_cases(cases):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def evaluate_cases(cases):\n    if not cases:\n        return {\"mean_recall\":0.0,\"citation_valid_rate\":0.0}\n    recalls, valid = [], 0\n    for case in cases:\n        found, gold = set(case[\"retrieved\"]), set(case[\"relevant\"])\n        recalls.append(len(found & gold)/len(gold) if gold else 0.0)\n        valid += set(case[\"citations\"]).issubset(found)\n    return {\"mean_recall\":sum(recalls)/len(cases),\"citation_valid_rate\":valid/len(cases)}\n",
+      "solutionExplanation": "Perfect recall covers labeled evidence but does not establish generated factual support. Compute set recall and citation-subset validity per case, then average by case count. Do not report citation validity as factual accuracy.",
+      "tests": [
+        {
+          "name": "Mixed",
+          "code": "assert evaluate_cases([{\"retrieved\":[\"a\"],\"relevant\":[\"a\",\"b\"],\"citations\":[\"a\"]},{\"retrieved\":[],\"relevant\":[\"b\"],\"citations\":[\"x\"]}]) == {\"mean_recall\":0.25,\"citation_valid_rate\":0.5}",
+          "explanation": "The metrics aggregate different properties."
+        },
+        {
+          "name": "Empty",
+          "code": "assert evaluate_cases([]) == {\"mean_recall\":0.0,\"citation_valid_rate\":0.0}",
+          "explanation": "No data is not perfect performance."
+        },
+        {
+          "name": "No labels",
+          "code": "assert evaluate_cases([{\"retrieved\":[],\"relevant\":[],\"citations\":[]}]) == {\"mean_recall\":0.0,\"citation_valid_rate\":1.0}",
+          "explanation": "Empty conventions remain independent."
+        }
+      ],
+      "hints": [
+        "Perfect recall covers labeled evidence but does not establish generated factual support.",
+        "Compute set recall and citation-subset validity per case, then average by case count."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not report citation validity as factual accuracy.",
+      "Keep tuning examples separate from evaluation cases."
+    ],
+    "xp": 50,
+    "tags": [
+      "rag",
+      "evaluation"
+    ]
+  },
+  {
+    "id": "rag-project-ingest",
+    "module": "rag",
+    "section": "Build a small RAG pipeline",
+    "title": "Project 1/3: build the evidence index",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "rag-checkpoint-evaluation"
+    ],
+    "objectives": [
+      "Explain project 1/3: build the evidence index in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "This capstone builds a complete small retrieval pipeline over local documents. It ingests text, retrieves relevant chunks, and produces an extractive response with citations. Generation is explicitly simulated: selected evidence is copied rather than sent to a language model. Every stage therefore runs without an API key and has observable, deterministic behavior.\n\nFirst create an index of clean word chunks, preserving each source and attaching an id combining document identity and position. Use non-overlapping windows for a baseline whose correctness is easy to inspect. Later experiments can add overlap and measure retrieval recall. Blank documents contribute nothing and invalid size fails clearly. The index is an in-memory list, not a production vector database, but its record contract can survive a later change of storage implementation.",
+    "why": "A working assistant needs trustworthy evidence before it needs a model. This milestone creates a reproducible local index whose records can be inspected and tested, separating later ranking problems from parsing, cleaning, provenance, and chunk-construction mistakes at ingestion time.",
+    "example": {
+      "code": "doc = {\"id\":\"ops\",\"text\":\"  Retry once.\\nThen alert. \",\"source\":\"ops.txt\"}\nwords = doc[\"text\"].split()\nprint(\" \".join(words[:2]))  # Retry once.",
+      "explanation": "The example extracts two normalized words while preserving punctuation. The project extends this operation across every source and window, attaching metadata to each chunk. Keeping source identity separate from text is essential because the final answer must cite a document that actually supplied its evidence rather than an invented reference."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which field must survive chunking?",
+      "options": [
+        "source",
+        "Guessed author",
+        "Generated confidence"
+      ],
+      "answer": "source",
+      "explanation": "The source field connects chunks to the original document."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement build_index(docs,size=40). Each input has id,text,source. Return non-overlapping normalized word chunks as {id:\"doc-id:index\",text,source}. Skip blank documents. Raise ValueError when size<=0.",
+      "starter": "def build_index(docs,size=40):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def build_index(docs,size=40):\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    result = []\n    for doc in docs:\n        words = doc[\"text\"].split()\n        for i,start in enumerate(range(0,len(words),size)):\n            result.append({\"id\":f'{doc[\"id\"]}:{i}',\"text\":\" \".join(words[start:start+size]),\"source\":doc[\"source\"]})\n    return result\n",
+      "solutionExplanation": "The source field connects chunks to the original document. Split words, enumerate window starts, and copy document id and source into each record. Do not index empty text as meaningful evidence.",
+      "tests": [
+        {
+          "name": "Chunks",
+          "code": "assert build_index([{\"id\":\"d\",\"text\":\"a b c\",\"source\":\"s\"}],2) == [{\"id\":\"d:0\",\"text\":\"a b\",\"source\":\"s\"},{\"id\":\"d:1\",\"text\":\"c\",\"source\":\"s\"}]",
+          "explanation": "Partial final chunks retain provenance."
+        },
+        {
+          "name": "Blank",
+          "code": "assert build_index([{\"id\":\"d\",\"text\":\" \",\"source\":\"s\"}]) == []",
+          "explanation": "Blank sources create no chunks."
+        },
+        {
+          "name": "Invalid",
+          "code": "try:\n    build_index([],0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Expected ValueError\")",
+          "explanation": "The size contract is enforced."
+        }
+      ],
+      "hints": [
+        "The source field connects chunks to the original document.",
+        "Split words, enumerate window starts, and copy document id and source into each record."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not index empty text as meaningful evidence.",
+      "Do not describe this in-memory index as a deployed vector database."
+    ],
+    "xp": 80,
+    "tags": [
+      "rag",
+      "project",
+      "ingestion"
+    ],
+    "project": {
+      "id": "rag-capstone",
+      "title": "A grounded document assistant",
+      "milestone": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "rag-project-retrieve",
+    "module": "rag",
+    "section": "Build a small RAG pipeline",
+    "title": "Project 2/3: retrieve useful passages",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "rag-project-ingest"
+    ],
+    "objectives": [
+      "Explain project 2/3: retrieve useful passages in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The second milestone searches the index produced earlier. Use the transparent keyword baseline: lowercase whitespace token sets and distinct overlap counts. This does not understand synonyms, but it is a real retriever whose results can be evaluated and improved. Determinism makes it possible to explain why a particular passage ranked first.\n\nEvery returned hit retains its id, text, and source and gains a score. Discard zero-overlap records, sort scores descending with stable ties, and take the requested count. Never mutate the stored index because another query must see the original data. An empty result will cause the next stage to abstain. This is more honest than filling unused slots with unrelated passages. Keep ingestion and search as separate functions so alternative retrieval algorithms can share exactly the same document collection.",
+    "why": "A document assistant must select evidence before composing an answer. This milestone makes the ingestion artifact queryable while preserving citation metadata, establishing an explainable retrieval baseline that future semantic-search experiments can compare against using labeled questions and genuine performance measurements.",
+    "example": {
+      "code": "chunk = {\"id\":\"ops:0\",\"text\":\"retry timeout\",\"source\":\"ops.txt\"}\nterms = set(\"timeout policy\".split())\nprint(len(terms & set(chunk[\"text\"].split())))  # 1",
+      "explanation": "One shared distinct token produces the score while the original chunk stays unchanged. A complete retriever applies this calculation to all records, constructs new hit dictionaries, and orders them. The immutable index can then support multiple queries or side-by-side retrieval strategies without query-specific scores leaking between requests or evaluation cases."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "What happens to zero-overlap records?",
+      "options": [
+        "Exclude them",
+        "Invent a score",
+        "Always fill remaining slots"
+      ],
+      "answer": "Exclude them",
+      "explanation": "Zero-overlap records lack evidence of relevance under this baseline."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement search_index(query,index,k=3). Return copies of index records with a positive score for distinct lowercase whitespace token overlap. Sort descending with stable ties and take up to k. k<=0 returns []. Leave index unchanged.",
+      "starter": "def search_index(query,index,k=3):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def search_index(query,index,k=3):\n    if k <= 0:\n        return []\n    terms = set(query.lower().split())\n    hits = []\n    for chunk in index:\n        score = len(terms & set(chunk[\"text\"].lower().split()))\n        if score:\n            hits.append({**chunk,\"score\":score})\n    return sorted(hits,key=lambda h:h[\"score\"],reverse=True)[:k]\n",
+      "solutionExplanation": "Zero-overlap records lack evidence of relevance under this baseline. Construct copies with {**chunk,\"score\":score}, then stable-sort and slice. Do not attach query-specific scores to the stored index.",
+      "tests": [
+        {
+          "name": "Rank",
+          "code": "assert search_index(\"a b\",[{\"id\":\"x\",\"text\":\"a\",\"source\":\"s\"},{\"id\":\"y\",\"text\":\"a b\",\"source\":\"s\"}],1)[0][\"id\"] == \"y\"",
+          "explanation": "The strongest overlap ranks first."
+        },
+        {
+          "name": "Missing",
+          "code": "assert search_index(\"unknown\",[{\"id\":\"x\",\"text\":\"a\",\"source\":\"s\"}]) == []",
+          "explanation": "No lexical evidence means no hit."
+        },
+        {
+          "name": "Unchanged",
+          "code": "data=[{\"id\":\"x\",\"text\":\"a\",\"source\":\"s\"}]\nsearch_index(\"a\",data)\nassert \"score\" not in data[0]",
+          "explanation": "Search does not mutate saved records."
+        }
+      ],
+      "hints": [
+        "Zero-overlap records lack evidence of relevance under this baseline.",
+        "Construct copies with {**chunk,\"score\":score}, then stable-sort and slice."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not attach query-specific scores to the stored index.",
+      "Do not claim lexical overlap provides semantic understanding."
+    ],
+    "xp": 80,
+    "tags": [
+      "rag",
+      "project",
+      "retrieval"
+    ],
+    "project": {
+      "id": "rag-capstone",
+      "title": "A grounded document assistant",
+      "milestone": 2,
+      "total": 3
+    }
+  },
+  {
+    "id": "rag-project-answer",
+    "module": "rag",
+    "section": "Build a small RAG pipeline",
+    "title": "Project 3/3: assemble the grounded assistant",
+    "minutes": 10,
+    "difficulty": "Applied",
+    "kind": "project",
+    "prerequisites": [
+      "rag-project-retrieve"
+    ],
+    "objectives": [
+      "Explain project 3/3: assemble the grounded assistant in an AI application.",
+      "Implement the specified behavior and verify its boundary cases."
+    ],
+    "explanation": "The final milestone connects ingestion, retrieval, and response construction into one application function. Reuse the previous record contracts, then create an extractive answer from the best retrieved passage. The returned mode says simulated so nobody mistakes deterministic copying for an executed language-model call. No network access or paid service is involved.\n\nEnd-to-end tests cover evidence found, evidence missing, and blank input. Success cites the exact chunk id and retains its source path; failure abstains with no citations. This is a complete baseline rather than a production deployment. Useful extensions include token-aware chunking, learned embeddings, authorization filters, and semantic grounding evaluation. A real-model adapter may paraphrase or combine passages, but it must preserve evidence traceability and receive separate tests for unsupported claims. The boundary contracts make those extensions reviewable.",
+    "why": "Combining stages exposes integration failures that helper tests can miss, especially lost source ids and inconsistent empty-result handling. This end-to-end artifact provides a runnable foundation to extend while preserving transparent simulation labels, reproducible checks, and a dependable missing-evidence response.",
+    "example": {
+      "code": "hit = {\"id\":\"guide:0\",\"text\":\"Use a retry budget.\",\"source\":\"guide.txt\"}\nresponse = {\"mode\":\"simulated\",\"answer\":hit[\"text\"],\"citations\":[hit[\"id\"]]}\nprint(response[\"mode\"])",
+      "explanation": "The response copies selected text and its id, giving the answer a visible origin. It deliberately avoids paraphrasing or adding new claims. The final project combines this response shape with indexing and retrieval, plus source paths and an abstention branch when no document supplies lexical evidence for the question."
+    },
+    "activity": {
+      "type": "choice",
+      "question": "Which label describes this generator?",
+      "options": [
+        "Simulated extractive response",
+        "Hosted LLM execution",
+        "Fine-tuned transformer"
+      ],
+      "answer": "Simulated extractive response",
+      "explanation": "This generator is a simulated extractor, not a language-model execution."
+    },
+    "exercise": {
+      "type": "project",
+      "prompt": "Implement answer_question(question,docs,size=40). Build normalized non-overlapping chunks, score keyword overlap, and quote the best positive match. Return {mode:\"simulated\",answer:text,citations:[chunk_id],sources:[source]}. No hit means \"Not enough evidence.\" and empty lists. Reject size<=0.",
+      "starter": "def answer_question(question,docs,size=40):\n    # Implement the behavior described in the exercise.\n    pass\n",
+      "solution": "def answer_question(question,docs,size=40):\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    terms, hits = set(question.lower().split()), []\n    for doc in docs:\n        words = doc[\"text\"].split()\n        for i,start in enumerate(range(0,len(words),size)):\n            text = \" \".join(words[start:start+size])\n            score = len(terms & set(text.lower().split()))\n            if score:\n                hits.append({\"id\":f'{doc[\"id\"]}:{i}',\"text\":text,\"source\":doc[\"source\"],\"score\":score})\n    hits.sort(key=lambda h:h[\"score\"],reverse=True)\n    if not hits:\n        return {\"mode\":\"simulated\",\"answer\":\"Not enough evidence.\",\"citations\":[],\"sources\":[]}\n    hit = hits[0]\n    return {\"mode\":\"simulated\",\"answer\":hit[\"text\"],\"citations\":[hit[\"id\"]],\"sources\":[hit[\"source\"]]}\n",
+      "solutionExplanation": "This generator is a simulated extractor, not a language-model execution. Combine chunking and scoring, select the stable highest positive score, and handle no hits explicitly. Do not report this project as an executed real-model integration.",
+      "tests": [
+        {
+          "name": "End to end",
+          "code": "assert answer_question(\"retry\",[{\"id\":\"ops\",\"text\":\"retry once\",\"source\":\"ops.txt\"}]) == {\"mode\":\"simulated\",\"answer\":\"retry once\",\"citations\":[\"ops:0\"],\"sources\":[\"ops.txt\"]}",
+          "explanation": "Provenance survives the full pipeline."
+        },
+        {
+          "name": "Abstain",
+          "code": "assert answer_question(\"missing\",[{\"id\":\"a\",\"text\":\"other\",\"source\":\"s\"}])[\"citations\"] == []",
+          "explanation": "Missing evidence has no citation."
+        },
+        {
+          "name": "Blank",
+          "code": "assert answer_question(\"anything\",[{\"id\":\"a\",\"text\":\" \",\"source\":\"s\"}])[\"answer\"] == \"Not enough evidence.\"",
+          "explanation": "Blank documents do not produce answers."
+        }
+      ],
+      "hints": [
+        "This generator is a simulated extractor, not a language-model execution.",
+        "Combine chunking and scoring, select the stable highest positive score, and handle no hits explicitly."
+      ],
+      "packages": []
+    },
+    "mistakes": [
+      "Do not report this project as an executed real-model integration.",
+      "Do not return citations when no evidence was selected."
+    ],
+    "xp": 80,
+    "tags": [
+      "rag",
+      "project",
+      "citations"
+    ],
+    "project": {
+      "id": "rag-capstone",
+      "title": "A grounded document assistant",
+      "milestone": 3,
+      "total": 3
+    }
+  }
+]

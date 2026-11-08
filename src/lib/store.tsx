@@ -1,0 +1,8 @@
+import {createContext,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
+import type {Progress} from '../schema';
+import {freshProgress} from './progress';
+import {loadProgress,saveProgress} from './storage';
+interface Store {progress:Progress;update:(fn:(p:Progress)=>Progress)=>void;ready:boolean;storageError:string;}
+const Context=createContext<Store>(null!);
+export function ProgressProvider({children}:{children:ReactNode}){const [progress,setProgress]=useState(freshProgress);const [ready,setReady]=useState(false);const [storageError,setError]=useState('');const ref=useRef(progress);const queue=useRef(Promise.resolve());useEffect(()=>{loadProgress().then(p=>{ref.current=p;setProgress(p)}).catch(()=>setError('Browser storage is unavailable. Progress will last only for this session; export it before leaving.')).finally(()=>setReady(true))},[]);const update=(fn:(p:Progress)=>Progress)=>{const next=fn(ref.current);ref.current=next;setProgress(next);queue.current=queue.current.then(()=>saveProgress(next)).catch(()=>setError('Progress could not be saved. Export a backup from your profile.'))};useEffect(()=>{const media=matchMedia('(prefers-color-scheme: dark)');const apply=()=>document.documentElement.dataset.theme=progress.settings.theme==='system'?(media.matches?'dark':'light'):progress.settings.theme;apply();media.addEventListener('change',apply);return()=>media.removeEventListener('change',apply)},[progress.settings.theme]);return <Context.Provider value={{progress,update,ready,storageError}}>{children}</Context.Provider>}
+export const useProgress=()=>useContext(Context);

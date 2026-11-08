@@ -1,0 +1,5 @@
+import {Worker} from 'node:worker_threads';
+const source=`const {parentPort}=require('node:worker_threads'); const {loadPyodide}=require('pyodide'); (async()=>{const py=await loadPyodide();parentPort.postMessage('ready');parentPort.on('message',code=>{try{parentPort.postMessage({value:py.runPython(code)})}catch(e){parentPort.postMessage({error:String(e)})}})})();`;
+function create(){const worker=new Worker(source,{eval:true});return new Promise((resolve,reject)=>{worker.once('error',reject);worker.once('message',()=>resolve(worker))})}
+const runaway=await create();runaway.postMessage('while True:\n    pass');await new Promise(r=>setTimeout(r,150));await runaway.terminate();
+const recovered=await create();const answer=new Promise((resolve,reject)=>{recovered.once('message',resolve);recovered.once('error',reject)});recovered.postMessage('6 * 7');const value=await answer;await recovered.terminate();if(value.value!==42)throw Error('Runtime did not recover');console.log('PASS: actual Pyodide infinite-loop worker terminated and replacement executed Python');
