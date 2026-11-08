@@ -63,3 +63,26 @@ See `CONTENT_STATUS.md` for exact authored counts and verification status. A pro
 - PyTorch, FastAPI servers, hosted model calls, and production deployments do not run inside browser exercises. Browser tasks use stdlib/NumPy equivalents or explicitly labeled deterministic simulations. Downloadable scripts demonstrate supported local workflows and require their own dependencies. They have not been executed as production services here.
 - Browser model behavior is simulated and labeled. The final LLM milestone offers an optional, unexecuted local adapter for an OpenAI-compatible API, with endpoint/model/key read from environment variables. No model credentials are stored in the browser.
 - The browser preview infrastructure failed to open its relay port in this session. Automated browser scenarios are included, but browser layout, service-worker offline behavior, iOS installation, and end-to-end browser tests remain unverified.
+
+## This implementation's verification and publication result
+
+- 140 ordinary lessons, 28 checkpoints, and 17 complete projects (51 milestones): 219 usable entries across all ten modules.
+- 14 automated core/content tests passed.
+- All 219 reference solutions and 657 Python test cases passed in CPython and in real Pyodide 0.27.7 using the shipped worker harness. Every starter fails at least one test.
+- A real infinite-loop Pyodide worker was terminated and a replacement executed successfully.
+- TypeScript and the production/PWA build passed.
+- Browser preview failed because the managed relay could not open port 4173. Browser scenarios are included in CI but were not run locally.
+- Git publication was attempted and rejected with HTTP 403. The connected GitHub API also returned `Resource not accessible by integration` when checking write access. Consequently this implementation has not been pushed or deployed, and the expected Pages URL is unverified.
+
+After extracting the source archive, publish using your own repository credentials:
+
+```sh
+git clone https://github.com/ThomasSchiolerH/pyquest.git
+# Copy the archive's files into that checkout, including .github/ and .gitignore.
+cd pyquest
+git add .
+git commit -m "Build PyQuest learning platform"
+git push origin main
+```
+
+Then select GitHub Actions as the Pages source as described above. The workflow runs the included browser scenarios before deployment. If a browser check fails in CI, inspect its failure before deploying.
