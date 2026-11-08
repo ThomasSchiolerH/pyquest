@@ -72,7 +72,8 @@ See `CONTENT_STATUS.md` for exact authored counts and verification status. A pro
 - A real infinite-loop Pyodide worker was terminated and a replacement executed successfully.
 - TypeScript and the production/PWA build passed.
 - Browser preview failed because the managed relay could not open port 4173. Browser scenarios are included in CI but were not run locally.
-- Git publication was attempted and rejected with HTTP 403. The connected GitHub API also returned `Resource not accessible by integration` when checking write access. Consequently this implementation has not been pushed or deployed, and the expected Pages URL is unverified.
+- Initial publication returned HTTP 403. After repository access was updated, the complete implementation was pushed to `main` as a fast-forward, preserving the initial commit. All 55 tracked files, including the workflow, were verified against the remote Git tree.
+- [Workflow run 42472954402](https://github.com/ThomasSchiolerH/pyquest/actions/runs/42472954402) was triggered by the push. GitHub marked the build job failed before assigning a runner (runner ID 0, zero steps); deployment was skipped. The API provided no startup annotation, and downloadable logs returned BlobNotFound. The exact GitHub-side cause remains unverified. Resolve the run’s startup annotation in GitHub, then rerun the workflow. The live site is not verified.
 
 After extracting the source archive, publish using your own repository credentials:
 
