@@ -85,10 +85,10 @@
       "Explain coordinate asynchronous service calls in an AI application.",
       "Implement the specified behavior and verify its boundary cases."
     ],
-    "explanation": "Async Python lets a task yield while waiting for I/O so another task can make progress. It is useful for independent HTTP requests to model, retrieval, or storage services. It does not automatically make CPU-heavy code parallel. Blocking calls inside an async function can still stall the event loop, so use async-compatible clients and move expensive CPU work to an appropriate execution strategy.\n\nasyncio.gather schedules awaitables and returns results in input order, even when completion order differs. Define what should happen if one call fails: fail the whole request, collect exceptions, or return partial results under a documented contract. Limit concurrency to avoid overwhelming dependencies. The browser exercise uses awaitable test doubles instead of real network requests and provides a synchronous wrapper for the worker's Python execution environment. It demonstrates orchestration without claiming a live API call occurred.",
+    "explanation": "Async Python lets a task yield while waiting for I/O so another task can make progress. It is useful for independent HTTP requests to model, retrieval, or storage services. It does not automatically make CPU-heavy code parallel. Blocking calls inside an async function can still stall the event loop, so use async-compatible clients and move expensive CPU work to an appropriate execution strategy.\n\nasyncio.gather schedules awaitables and returns results in input order, even when completion order differs. Define what should happen if one call fails: fail the whole request, collect exceptions, or return partial results under a documented contract. Limit concurrency to avoid overwhelming dependencies. The browser exercise uses awaitable test doubles instead of real network requests and uses top-level await to cooperate with the worker's existing event loop. It demonstrates orchestration without claiming a live API call occurred.\n\nDefine collect_values with async def and await it directly in PyQuest. A standalone local Python script can use asyncio.run(main()) at its entry point. That local entry-point pattern should not be nested inside Pyodide, where synchronous event-loop bridging can depend on WebAssembly stack switching that is unavailable in some runtimes.",
     "why": "An AI endpoint may need retrieval and metadata from independent services. Concurrent I/O can reduce waiting, but explicit ordering and failure behavior are necessary to avoid mismatched results, hidden partial failures, or excessive load on rate-limited dependencies during traffic bursts.",
     "example": {
-      "code": "import asyncio\nasync def value(x):\n    await asyncio.sleep(0)\n    return x * 2\nasync def main():\n    return await asyncio.gather(value(2),value(3))\nprint(asyncio.run(main()))",
+      "code": "import asyncio\nasync def value(x):\n    await asyncio.sleep(0)\n    return x * 2\nasync def main():\n    return await asyncio.gather(value(2),value(3))\nprint(await main())  # PyQuest supports top-level await.\n# In a standalone local script, use print(asyncio.run(main())) instead.",
       "explanation": "Both coroutines yield once, allowing the event loop to coordinate them. gather preserves the order supplied by the caller, so returned values remain aligned with request ids. These are deterministic local awaitables, not HTTP calls, which makes scheduling behavior testable without an API key, external network, or a production server."
     },
     "activity": {
@@ -103,30 +103,30 @@
     },
     "exercise": {
       "type": "function",
-      "prompt": "Implement collect_values(values). Internally use asyncio.gather over an async helper that awaits asyncio.sleep(0) and returns x*2. Return results in input order through asyncio.run. No network calls. Empty values returns [].",
-      "starter": "def collect_values(values):\n    # Implement the behavior described in the exercise.\n    pass\n",
-      "solution": "def collect_values(values):\n    import asyncio\n    async def one(value):\n        await asyncio.sleep(0)\n        return value*2\n    async def main():\n        return await asyncio.gather(*(one(value) for value in values))\n    return asyncio.run(main())\n",
-      "solutionExplanation": "Async coordinates waiting; it does not automatically parallelize CPU-bound work. Create awaitables, gather them in one async main function, then run that function. Do not use blocking HTTP clients inside an event loop unintentionally.",
+      "prompt": "Implement async collect_values(values). Use asyncio.gather over an async helper that awaits asyncio.sleep(0) and returns x*2. Return results in input order. Call it with await collect_values(values) in PyQuest. No network calls. Empty values returns [].",
+      "starter": "async def collect_values(values):\n    # Gather the async helpers and return their results.\n    pass\n",
+      "solution": "async def collect_values(values):\n    import asyncio\n    async def one(value):\n        await asyncio.sleep(0)\n        return value*2\n    return await asyncio.gather(*(one(value) for value in values))\n",
+      "solutionExplanation": "The async function creates one coroutine per input and awaits gather. This preserves input order while letting each helper yield to the existing event loop. Direct await avoids nesting asyncio.run inside Pyodide; no synchronous WebAssembly stack switching is needed.",
       "tests": [
         {
           "name": "Order",
-          "code": "assert collect_values([3,1,2]) == [6,2,4]",
+          "code": "assert await collect_values([3,1,2]) == [6,2,4]",
           "explanation": "Results retain input alignment."
         },
         {
           "name": "Empty",
-          "code": "assert collect_values([]) == []",
+          "code": "assert await collect_values([]) == []",
           "explanation": "No work yields an empty result."
         },
         {
           "name": "Negative",
-          "code": "assert collect_values([-2,0]) == [-4,0]",
+          "code": "assert await collect_values([-2,0]) == [-4,0]",
           "explanation": "Local test doubles execute genuine Python."
         }
       ],
       "hints": [
         "Async coordinates waiting; it does not automatically parallelize CPU-bound work.",
-        "Create awaitables, gather them in one async main function, then run that function."
+        "Define async def collect_values, then return await asyncio.gather over the helper coroutines. In the PyQuest editor you can call it with top-level await."
       ],
       "packages": []
     },

@@ -11,7 +11,7 @@ self.onmessage=async({data})=>{
   pyodide.globals.set('_quest_tests',JSON.stringify(data.tests));
   send('Running your code and tests…','running');
   const json=await pyodide.runPythonAsync(`
-import io, sys, json, traceback, contextlib
+import ast, inspect, io, sys, json, traceback, contextlib
 class LimitedOutput(io.StringIO):
     def write(self, value):
         remaining = max(0, 20000 - self.tell())
@@ -19,15 +19,21 @@ class LimitedOutput(io.StringIO):
 _out, _err = LimitedOutput(), LimitedOutput()
 _results, _error = [], None
 _namespace = {'__name__': '__main__'}
+async def _execute(source, filename):
+    # Let Python yield to the host event loop without synchronous stack switching.
+    compiled = compile(source, filename, 'exec', flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+    pending = eval(compiled, _namespace)
+    if inspect.isawaitable(pending):
+        await pending
 with contextlib.redirect_stdout(_out), contextlib.redirect_stderr(_err):
     try:
-        exec(compile(_quest_code, 'your_code.py', 'exec'), _namespace)
+        await _execute(_quest_code, 'your_code.py')
     except BaseException:
         _error = traceback.format_exc()
     if _error is None:
         for _test in json.loads(_quest_tests):
             try:
-                exec(compile(_test['code'], 'test_' + _test['name'], 'exec'), _namespace)
+                await _execute(_test['code'], 'test_' + _test['name'])
                 _results.append({'name': _test['name'], 'passed': True})
             except BaseException:
                 _results.append({'name': _test['name'], 'passed': False, 'error': traceback.format_exc()})

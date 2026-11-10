@@ -83,11 +83,11 @@
       "Explain decorators wrap behavior without losing identity in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "A decorator is a function that receives a callable and returns another callable. The @decorator syntax replaces a function with the decorated result when its definition is executed. A wrapper can run code before or after the original call, but it should preserve the original result and exception behavior unless changing them is the explicit purpose. *args and **kwargs let the wrapper forward arbitrary positional and keyword arguments.\n\nfunctools.wraps copies useful metadata such as the original name and docstring and adds a __wrapped__ link for inspection. Without it, logging and debugging often report an unhelpful wrapper name. A call-counting decorator is a small example of instrumentation. Count attempts before invoking the function if failed calls should count; count afterward if only successful calls matter. That distinction is part of the decorator’s contract.",
+    "explanation": "A decorator is a function that receives a callable and returns another callable. The @decorator syntax replaces a function with the decorated result when its definition is executed. A wrapper can run code before or after the original call, but it should preserve the original result and exception behavior unless changing them is the explicit purpose. *args and **kwargs let the wrapper forward arbitrary positional and keyword arguments.\n\nfunctools.wraps copies useful metadata such as the original name and docstring and adds a __wrapped__ link for inspection. Without it, logging and debugging often report an unhelpful wrapper name. A call-counting decorator is a small example of instrumentation. Count attempts before invoking the function if failed calls should count; count afterward if only successful calls matter. That distinction is part of the decorator\u2019s contract.",
     "why": "AI clients need timing, logging, and request-count instrumentation around many methods. A well-behaved decorator adds that cross-cutting behavior while preserving callable arguments, return values, exceptions, and metadata that debugging tools and tests rely on.",
     "example": {
       "code": "from functools import wraps\n\ndef announce(fn):\n    @wraps(fn)\n    def wrapped(*args, **kwargs):\n        print(\"Calling\", fn.__name__)\n        return fn(*args, **kwargs)\n    return wrapped\n\n@announce\ndef double(value):\n    return value * 2\n\nprint(double(3), double.__name__)",
-      "explanation": "The decorator returns a new callable that prints before forwarding the call. wraps keeps double’s name visible even though execution passes through wrapped. Returning the original function’s result is essential: omitting return would replace every successful result with None. The exercise uses an attribute on the wrapper to expose an attempt counter instead of printing instrumentation."
+      "explanation": "The decorator returns a new callable that prints before forwarding the call. wraps keeps double\u2019s name visible even though execution passes through wrapped. Returning the original function\u2019s result is essential: omitting return would replace every successful result with None. The exercise uses an attribute on the wrapper to expose an attempt counter instead of printing instrumentation."
     },
     "activity": {
       "type": "choice",
@@ -130,7 +130,7 @@
       "packages": []
     },
     "mistakes": [
-      "Forgetting to return fn’s result.",
+      "Forgetting to return fn\u2019s result.",
       "Counting only successes when the contract counts attempts."
     ],
     "xp": 20,
@@ -247,7 +247,7 @@
       "prompt": "Implement ranked_ids(rows). Rows have string id and numeric score. Return IDs ordered by descending score, breaking ties by ascending ID. Do not reorder the input list.",
       "starter": "def ranked_ids(rows):\n    pass",
       "solution": "def ranked_ids(rows):\n    return [row[\"id\"] for row in sorted(rows,key=lambda row:(-row[\"score\"],row[\"id\"]))]",
-      "solutionExplanation": "Use a tuple key of negative score followed by ID. Call sorted(rows, key=...) and then extract each row’s ID into a new list. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "solutionExplanation": "Use a tuple key of negative score followed by ID. Call sorted(rows, key=...) and then extract each row\u2019s ID into a new list. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
       "tests": [
         {
           "name": "Ranking",
@@ -267,13 +267,13 @@
       ],
       "hints": [
         "Use a tuple key of negative score followed by ID.",
-        "Call sorted(rows, key=...) and then extract each row’s ID into a new list."
+        "Call sorted(rows, key=...) and then extract each row\u2019s ID into a new list."
       ],
       "packages": []
     },
     "mistakes": [
       "Using reverse=True on both keys and reversing ID order too.",
-      "Using list.sort and mutating the caller’s ordering."
+      "Using list.sort and mutating the caller\u2019s ordering."
     ],
     "xp": 20,
     "tags": [
@@ -439,7 +439,7 @@
       "Explain structural typing and dependency injection in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "Python’s typing.Protocol describes the methods or attributes an object should provide without requiring it to inherit from a particular base class. This is structural typing: a component is compatible because it has the required shape. Static type checkers use the protocol, while runtime code still calls ordinary Python methods. A protocol is not a substitute for checking untrusted data or catching documented service failures.\n\nDependency injection means passing a dependency into a function or constructor instead of creating a specific implementation internally. A text-scoring pipeline can receive any object with a score(text) method. Tests can supply a deterministic fake, and production can supply a model-backed scorer. Keep the protocol small and focused on what the consumer actually needs. This reduces coupling and makes the boundary between local logic and external behavior explicit.",
+    "explanation": "Python\u2019s typing.Protocol describes the methods or attributes an object should provide without requiring it to inherit from a particular base class. This is structural typing: a component is compatible because it has the required shape. Static type checkers use the protocol, while runtime code still calls ordinary Python methods. A protocol is not a substitute for checking untrusted data or catching documented service failures.\n\nDependency injection means passing a dependency into a function or constructor instead of creating a specific implementation internally. A text-scoring pipeline can receive any object with a score(text) method. Tests can supply a deterministic fake, and production can supply a model-backed scorer. Keep the protocol small and focused on what the consumer actually needs. This reduces coupling and makes the boundary between local logic and external behavior explicit.",
     "why": "AI providers and local models expose different clients. A small injected interface lets application logic remain stable while tests replace paid or nondeterministic calls with predictable fakes, making correctness checks fast and independent of network access.",
     "example": {
       "code": "from typing import Protocol\n\nclass Scorer(Protocol):\n    def score(self, text: str) -> float: ...\n\nclass LengthScorer:\n    def score(self,text): return float(len(text))\n\ndef evaluate(text, scorer: Scorer):\n    return scorer.score(text)\n\nprint(evaluate(\"AI\",LengthScorer()))",
@@ -454,14 +454,14 @@
         "Only a dictionary"
       ],
       "answer": "Any object with the required compatible method",
-      "explanation": "Depend on the score method’s behavior rather than a concrete client class."
+      "explanation": "Depend on the score method\u2019s behavior rather than a concrete client class."
     },
     "exercise": {
       "type": "function",
       "prompt": "Implement score_batch(texts, scorer). scorer supplies score(text). Call it once per text, preserve input order, and return the results unchanged. Empty input makes no calls.",
       "starter": "def score_batch(texts, scorer):\n    pass",
       "solution": "def score_batch(texts, scorer):\n    return [scorer.score(text) for text in texts]",
-      "solutionExplanation": "Depend on the score method’s behavior rather than a concrete client class. A list comprehension can call scorer.score(text) exactly once for each input. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "solutionExplanation": "Depend on the score method\u2019s behavior rather than a concrete client class. A list comprehension can call scorer.score(text) exactly once for each input. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
       "tests": [
         {
           "name": "Injected behavior",
@@ -480,7 +480,7 @@
         }
       ],
       "hints": [
-        "Depend on the score method’s behavior rather than a concrete client class.",
+        "Depend on the score method\u2019s behavior rather than a concrete client class.",
         "A list comprehension can call scorer.score(text) exactly once for each input."
       ],
       "packages": []
@@ -511,10 +511,10 @@
       "Explain async tasks and bounded concurrency in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "An async def function returns a coroutine when called. Awaiting it allows execution to continue until it reaches an operation that can suspend, such as asynchronous I/O. This is cooperative concurrency, not automatic parallel CPU execution. A blocking function or expensive pure-Python loop still blocks the event loop unless moved to a suitable executor or redesigned.\n\nasyncio.gather schedules several awaitables and returns results in input order, even if they finish in a different order. A semaphore limits how many tasks enter a protected section simultaneously. This is useful for respecting an API’s concurrency limit without serializing all work. Keep timeouts, cancellation, and failure handling explicit. The exercise uses injected asynchronous operations with no network calls; the pattern is transferable to a real HTTP client whose methods are genuinely asynchronous.",
+    "explanation": "An async def function returns a coroutine when called. Awaiting it allows execution to continue until it reaches an operation that can suspend, such as asynchronous I/O. This is cooperative concurrency, not automatic parallel CPU execution. A blocking function or expensive pure-Python loop still blocks the event loop unless moved to a suitable executor or redesigned.\n\nasyncio.gather schedules several awaitables and returns results in input order, even if they finish in a different order. A semaphore limits how many tasks enter a protected section simultaneously. This is useful for respecting an API\u2019s concurrency limit without serializing all work. Keep timeouts, cancellation, and failure handling explicit. The exercise uses injected asynchronous operations with no network calls; the pattern is transferable to a real HTTP client whose methods are genuinely asynchronous.\n\nPyQuest already has an asynchronous event loop. Use top-level await to call an async function here, for example results = await bounded_map(values, operation, 2). In a standalone local script, asyncio.run(main()) starts the event loop; calling it inside Pyodide may require unsupported WebAssembly stack switching.",
     "why": "LLM applications often wait for several independent requests. Bounded async concurrency can overlap that waiting while respecting service limits, but it must preserve result alignment and must not be confused with faster execution of CPU-heavy model computations.",
     "example": {
-      "code": "import asyncio\n\nasync def double(value):\n    await asyncio.sleep(0)  # Yield control; no real delay.\n    return value*2\n\nasync def demo():\n    return await asyncio.gather(double(2),double(3))\n\n# In a local script: print(asyncio.run(demo()))\n# In an async notebook cell: await demo()",
+      "code": "import asyncio\n\nasync def double(value):\n    await asyncio.sleep(0)  # Yield control; no real delay.\n    return value*2\n\nasync def demo():\n    return await asyncio.gather(double(2),double(3))\n\n# In a local script: print(asyncio.run(demo()))\n# In PyQuest or an async notebook cell:\nprint(await demo())",
       "explanation": "The asynchronous function yields control at sleep(0), allowing another scheduled task to run. gather returns results corresponding to the original argument order. The example deliberately distinguishes local script execution from an already-running event loop. The exercise supplies the coroutine function to gather and adds a semaphore so no more than the requested number of operations run at once."
     },
     "activity": {
@@ -529,24 +529,24 @@
     },
     "exercise": {
       "type": "function",
-      "prompt": "Implement async bounded_map(values, operation, limit). operation(value) is async. Return results in input order while allowing at most limit simultaneous operation calls. limit <= 0 raises ValueError; empty input returns [].",
+      "prompt": "Implement async bounded_map(values, operation, limit). operation(value) is async. Return results in input order while allowing at most limit simultaneous operation calls. limit <= 0 raises ValueError; empty input returns []. In PyQuest, call the function with top-level await rather than asyncio.run.",
       "starter": "import asyncio\n\nasync def bounded_map(values, operation, limit):\n    pass",
       "solution": "import asyncio\n\nasync def bounded_map(values, operation, limit):\n    if limit <= 0:\n        raise ValueError(\"limit must be positive\")\n    semaphore=asyncio.Semaphore(limit)\n    async def run(value):\n        async with semaphore:\n            return await operation(value)\n    return await asyncio.gather(*(run(value) for value in values))",
       "solutionExplanation": "Async overlaps cooperative waiting; it does not parallelize ordinary CPU loops. Create an asyncio.Semaphore(limit), acquire it with async with around await operation(value), then gather the wrappers. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
       "tests": [
         {
           "name": "Results",
-          "code": "import asyncio\nasync def op(x):\n    await asyncio.sleep(0)\n    return x*3\nassert asyncio.run(bounded_map([3,1,2],op,2))==[9,3,6]",
+          "code": "import asyncio\nasync def op(x):\n    await asyncio.sleep(0)\n    return x*3\nassert (await bounded_map([3,1,2],op,2))==[9,3,6]",
           "explanation": "Output remains aligned with input order."
         },
         {
           "name": "Concurrency bound",
-          "code": "import asyncio\nstate={\"active\":0,\"peak\":0}\nasync def op(x):\n    state[\"active\"]+=1; state[\"peak\"]=max(state[\"peak\"],state[\"active\"])\n    await asyncio.sleep(0)\n    state[\"active\"]-=1\n    return x\nassert asyncio.run(bounded_map([1,2,3,4],op,2))==[1,2,3,4]\nassert state[\"peak\"]<=2",
+          "code": "import asyncio\nstate={\"active\":0,\"peak\":0}\nasync def op(x):\n    state[\"active\"]+=1; state[\"peak\"]=max(state[\"peak\"],state[\"active\"])\n    await asyncio.sleep(0)\n    state[\"active\"]-=1\n    return x\nassert (await bounded_map([1,2,3,4],op,2))==[1,2,3,4]\nassert state[\"peak\"]<=2",
           "explanation": "The semaphore must enclose the awaited operation."
         },
         {
           "name": "Empty and invalid",
-          "code": "import asyncio\nasync def op(x): return x\nassert asyncio.run(bounded_map([],op,1))==[]\ntry:\n    asyncio.run(bounded_map([],op,0))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid limit accepted\")",
+          "code": "import asyncio\nasync def op(x): return x\nassert (await bounded_map([],op,1))==[]\ntry:\n    (await bounded_map([],op,0))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Invalid limit accepted\")",
           "explanation": "Validate the limit even for empty input."
         }
       ],
@@ -600,7 +600,7 @@
     },
     "exercise": {
       "type": "function",
-      "prompt": "Implement classify_status(status). Return \"success\" for 200–299, \"retryable\" for 429 or 500–599, and \"fatal\" otherwise. This is a teaching policy, not a universal HTTP retry standard.",
+      "prompt": "Implement classify_status(status). Return \"success\" for 200\u2013299, \"retryable\" for 429 or 500\u2013599, and \"fatal\" otherwise. This is a teaching policy, not a universal HTTP retry standard.",
       "starter": "def classify_status(status):\n    pass",
       "solution": "def classify_status(status):\n    if 200 <= status < 300:\n        return \"success\"\n    if status==429 or 500 <= status < 600:\n        return \"retryable\"\n    return \"fatal\"",
       "solutionExplanation": "Separate success, retry candidates, and fatal responses using explicit status ranges. Check 200 <= status < 300 first, then status == 429 or 500 <= status < 600. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
@@ -652,11 +652,11 @@
       "Explain build an api client around an injected transport in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "An API client translates application calls into a service’s transport format and translates responses back into domain values. Keep the public method focused on what callers need, such as generate(prompt), rather than exposing every HTTP detail. Injecting a transport function allows the client to be tested with deterministic responses and keeps service-specific behavior separate from application logic.\n\nValidate inputs before sending a request and validate outputs before returning them. A nonblank prompt is a reasonable boundary for this small client. A successful response must contain string text; otherwise returning a partially valid object would spread malformed data downstream. This simulated client makes no network calls. A real transport would add authentication, request timeouts, and status handling while preserving the same domain contract. Do not store secrets in source code or browser bundles.",
+    "explanation": "An API client translates application calls into a service\u2019s transport format and translates responses back into domain values. Keep the public method focused on what callers need, such as generate(prompt), rather than exposing every HTTP detail. Injecting a transport function allows the client to be tested with deterministic responses and keeps service-specific behavior separate from application logic.\n\nValidate inputs before sending a request and validate outputs before returning them. A nonblank prompt is a reasonable boundary for this small client. A successful response must contain string text; otherwise returning a partially valid object would spread malformed data downstream. This simulated client makes no network calls. A real transport would add authentication, request timeouts, and status handling while preserving the same domain contract. Do not store secrets in source code or browser bundles.",
     "why": "A narrow client wrapper makes switching AI providers easier and keeps tests independent of paid APIs. Injected transport also lets you reproduce unusual response shapes and failures that are difficult to trigger reliably against a live service.",
     "example": {
       "code": "def fake_transport(payload):\n    return {\"text\": payload[\"prompt\"].upper()}\n\ndef call_once(prompt, transport):\n    payload={\"prompt\":prompt,\"max_tokens\":32}\n    return transport(payload)[\"text\"]\n\nprint(call_once(\"hello\",fake_transport))\n# Deterministic simulation, not model inference.",
-      "explanation": "The application function constructs the service payload and delegates execution to the supplied transport. The fake returns a deterministic uppercase string so the boundary can be inspected without a model. The exercise adds input and output validation and packages the behavior in a reusable client object, while keeping networking outside the client’s core logic."
+      "explanation": "The application function constructs the service payload and delegates execution to the supplied transport. The fake returns a deterministic uppercase string so the boundary can be inspected without a model. The exercise adds input and output validation and packages the behavior in a reusable client object, while keeping networking outside the client\u2019s core logic."
     },
     "activity": {
       "type": "choice",
@@ -724,7 +724,7 @@
       "Explain log useful events without leaking prompts in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "Logging records diagnostic events with levels such as DEBUG, INFO, WARNING, and ERROR. A logger produces records; handlers decide where they go; formatters decide how they look. Library code should usually obtain a named logger instead of configuring the whole application’s root logger. The application owns destinations and verbosity so different environments can choose appropriate policies.\n\nAI logs can accidentally expose prompts, retrieved documents, API keys, or personal data. Prefer operational metadata such as request IDs, latency, status, and token counts when raw content is unnecessary. A redaction function should create a new mapping rather than mutate the original request. Redaction by key is only a limited teaching policy: secrets can appear in nested structures or free text, so production logging requires deliberate schemas and data minimization rather than confidence in a short denylist.",
+    "explanation": "Logging records diagnostic events with levels such as DEBUG, INFO, WARNING, and ERROR. A logger produces records; handlers decide where they go; formatters decide how they look. Library code should usually obtain a named logger instead of configuring the whole application\u2019s root logger. The application owns destinations and verbosity so different environments can choose appropriate policies.\n\nAI logs can accidentally expose prompts, retrieved documents, API keys, or personal data. Prefer operational metadata such as request IDs, latency, status, and token counts when raw content is unnecessary. A redaction function should create a new mapping rather than mutate the original request. Redaction by key is only a limited teaching policy: secrets can appear in nested structures or free text, so production logging requires deliberate schemas and data minimization rather than confidence in a short denylist.",
     "why": "AI debugging needs enough information to diagnose latency and failures without copying sensitive prompts or credentials into long-lived logs. Structured operational metadata helps correlate requests while keeping observability separate from the full content processed by the model.",
     "example": {
       "code": "import logging\nlogger=logging.getLogger(\"pyquest.client\")\nevent={\"request_id\":\"r-1\",\"status\":\"ok\",\"tokens\":24}\nlogger.info(\"request_complete request_id=%s status=%s tokens=%s\",\n            event[\"request_id\"],event[\"status\"],event[\"tokens\"])\n# The application decides handlers and log levels.",
@@ -945,7 +945,7 @@
       "Explain dependency ranges and reproducible builds in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "A dependency declaration expresses compatibility, while a lock file records a particular resolved environment. Exact pins make a given installation more reproducible, but they still depend on supported Python versions, platforms, and available package artifacts. Broad ranges allow updates that may change behavior. Test upgrades deliberately rather than assuming a compatible version number proves an AI pipeline’s outputs remain unchanged.\n\nVersion strings should not be compared lexicographically: \"2.10\" would sort before \"2.9\" as text even though its numeric minor version is larger. Real Python packaging uses the richer PEP 440 specification and dedicated tools. This lesson implements only a deliberately restricted three-integer version format to practice numeric tuple comparisons. It does not handle prereleases, epochs, local versions, or dependency resolution. Naming these limits is part of designing a trustworthy utility.",
+    "explanation": "A dependency declaration expresses compatibility, while a lock file records a particular resolved environment. Exact pins make a given installation more reproducible, but they still depend on supported Python versions, platforms, and available package artifacts. Broad ranges allow updates that may change behavior. Test upgrades deliberately rather than assuming a compatible version number proves an AI pipeline\u2019s outputs remain unchanged.\n\nVersion strings should not be compared lexicographically: \"2.10\" would sort before \"2.9\" as text even though its numeric minor version is larger. Real Python packaging uses the richer PEP 440 specification and dedicated tools. This lesson implements only a deliberately restricted three-integer version format to practice numeric tuple comparisons. It does not handle prereleases, epochs, local versions, or dependency resolution. Naming these limits is part of designing a trustworthy utility.",
     "why": "Numerical and model-serving dependencies can affect outputs, performance, and deployment compatibility. Understanding declarations, locks, and version comparison helps you review upgrades carefully and prevents a simplistic string comparison from selecting an older or unsupported library release.",
     "example": {
       "code": "print(\"2.10.0\" < \"2.9.0\")  # True: lexical order is wrong here.\na=tuple(int(part) for part in \"2.10.0\".split(\".\"))\nb=tuple(int(part) for part in \"2.9.0\".split(\".\"))\nprint(a>b)  # True: compare numeric components.",
@@ -1103,14 +1103,14 @@
         "The network is available"
       ],
       "answer": "The wrapper handles that configured response",
-      "explanation": "A mock verifies behavior against configured responses, not the real model’s competence."
+      "explanation": "A mock verifies behavior against configured responses, not the real model\u2019s competence."
     },
     "exercise": {
       "type": "function",
       "prompt": "Implement complete_nonblank(prompt, client). Strip a string prompt. Return None without calling client.generate when blank; otherwise call generate once with the stripped prompt and return its result unchanged. Propagate client exceptions.",
       "starter": "def complete_nonblank(prompt, client):\n    pass",
       "solution": "def complete_nonblank(prompt, client):\n    cleaned=prompt.strip()\n    if not cleaned:\n        return None\n    return client.generate(cleaned)",
-      "solutionExplanation": "A mock verifies behavior against configured responses, not the real model’s competence. Strip once, return None for an empty result, otherwise return client.generate(cleaned) directly. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
+      "solutionExplanation": "A mock verifies behavior against configured responses, not the real model\u2019s competence. Strip once, return None for an empty result, otherwise return client.generate(cleaned) directly. The implementation keeps the documented behavior independent of external services, allowing deterministic checks of both ordinary and failure paths.",
       "tests": [
         {
           "name": "Normalize call",
@@ -1129,7 +1129,7 @@
         }
       ],
       "hints": [
-        "A mock verifies behavior against configured responses, not the real model’s competence.",
+        "A mock verifies behavior against configured responses, not the real model\u2019s competence.",
         "Strip once, return None for an empty result, otherwise return client.generate(cleaned) directly."
       ],
       "packages": []
@@ -1291,7 +1291,7 @@
     "id": "advanced-project-transport",
     "module": "advanced",
     "section": "Reusable AI client project",
-    "title": "AI client · 1. A deterministic transport",
+    "title": "AI client \u00b7 1. A deterministic transport",
     "minutes": 10,
     "difficulty": "Applied",
     "kind": "project",
@@ -1299,18 +1299,18 @@
       "advanced-checkpoint-resilience"
     ],
     "objectives": [
-      "Explain ai client · 1. a deterministic transport in a reusable AI component.",
+      "Explain ai client \u00b7 1. a deterministic transport in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
     "explanation": "The capstone builds a reusable client around a simulated AI service. Start with a deterministic transport that accepts a payload and returns a structured response. Its behavior must be clearly labeled as simulation: extracting words or uppercasing text is not model inference. The transport validates a nonblank prompt and an integer output limit, then returns a bounded prefix of whitespace-separated words with a usage count.\n\nKeeping simulation deterministic makes later retry and logging tests reproducible. The public payload shape mirrors a simple hosted service without requiring an API key or network connection. Reject invalid limits rather than quietly clipping them, and distinguish input words from returned output words. This first milestone establishes the service contract that later client stages will consume. Each stage can then be tested independently before the final composed client is exercised end to end.",
-    "why": "A simulated service allows you to build and test an API client without paid calls, credentials, or nondeterministic answers. Clearly labeling that behavior prevents a working transport demonstration from being mistaken for a real language model’s generation capabilities.",
+    "why": "A simulated service allows you to build and test an API client without paid calls, credentials, or nondeterministic answers. Clearly labeling that behavior prevents a working transport demonstration from being mistaken for a real language model\u2019s generation capabilities.",
     "example": {
       "code": "payload={\"prompt\":\"one two three\", \"max_words\":2}\nwords=payload[\"prompt\"].split()\noutput=\" \".join(words[:payload[\"max_words\"]])\nprint({\"text\":output,\"simulated\":True})\n# This is word selection, not language-model generation.",
       "explanation": "The example shows the deterministic transformation at the heart of the fake service. It returns a prefix of the prompt rather than inventing new text, and simulated is explicitly true. The project function adds validation and a usage count so the next milestone can rely on a stable transport contract and distinguish malformed requests from transient failures."
     },
     "activity": {
       "type": "choice",
-      "question": "What must identify this service’s behavior honestly?",
+      "question": "What must identify this service\u2019s behavior honestly?",
       "options": [
         "A simulated flag",
         "A claim of real inference",
@@ -1369,7 +1369,7 @@
     "id": "advanced-project-retry",
     "module": "advanced",
     "section": "Reusable AI client project",
-    "title": "AI client · 2. A bounded transport policy",
+    "title": "AI client \u00b7 2. A bounded transport policy",
     "minutes": 10,
     "difficulty": "Applied",
     "kind": "project",
@@ -1377,7 +1377,7 @@
       "advanced-project-transport"
     ],
     "objectives": [
-      "Explain ai client · 2. a bounded transport policy in a reusable AI component.",
+      "Explain ai client \u00b7 2. a bounded transport policy in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
     "explanation": "The second milestone wraps the transport in a reusable retry function. The payload is passed unchanged to each attempt, and the caller supplies both the transport and the waiting callback. This separates policy from mechanism: the wrapper decides when another attempt is allowed, while the transport decides how a request is performed and the waiting callback decides how time is handled.\n\nRetry only TimeoutError and count the first request as an attempt. Delay after a retryable failure only if another attempt remains. Exponential delays start at 0.25 seconds in this project. Tests record those requested delays without actually waiting. Validation and response-shape errors should propagate immediately because repeating the same malformed request is unlikely to help. A real service also needs deadlines and idempotency considerations; this milestone establishes a bounded, inspectable core policy.",
@@ -1447,7 +1447,7 @@
     "id": "advanced-project-client",
     "module": "advanced",
     "section": "Reusable AI client project",
-    "title": "AI client · 3. Compose the reusable client",
+    "title": "AI client \u00b7 3. Compose the reusable client",
     "minutes": 10,
     "difficulty": "Applied",
     "kind": "project",
@@ -1455,10 +1455,10 @@
       "advanced-project-retry"
     ],
     "objectives": [
-      "Explain ai client · 3. compose the reusable client in a reusable AI component.",
+      "Explain ai client \u00b7 3. compose the reusable client in a reusable AI component.",
       "Implement the stated behavior and verify ordinary and edge cases."
     ],
-    "explanation": "The final client composes the simulated transport and bounded retry policy into a small public interface. Its constructor receives transport, wait, and an event sink; generate accepts a prompt and an output limit. Validate inputs before any attempt, send a normalized payload through the retry helper, validate the resulting response, and only then record a successful operational event.\n\nThe event includes usage and the simulated flag, not raw prompt or answer text. This keeps the distinction between the fake service and any later real transport visible. The returned response remains structured so callers can inspect text and metadata. The completed project demonstrates dependency injection, contracts, retries, and observability without paid services. A real integration would additionally implement authentication, HTTP timeouts, status mapping, and secure server-side secret handling; those concerns should preserve rather than bypass the client’s tested boundaries.",
+    "explanation": "The final client composes the simulated transport and bounded retry policy into a small public interface. Its constructor receives transport, wait, and an event sink; generate accepts a prompt and an output limit. Validate inputs before any attempt, send a normalized payload through the retry helper, validate the resulting response, and only then record a successful operational event.\n\nThe event includes usage and the simulated flag, not raw prompt or answer text. This keeps the distinction between the fake service and any later real transport visible. The returned response remains structured so callers can inspect text and metadata. The completed project demonstrates dependency injection, contracts, retries, and observability without paid services. A real integration would additionally implement authentication, HTTP timeouts, status mapping, and secure server-side secret handling; those concerns should preserve rather than bypass the client\u2019s tested boundaries.",
     "why": "A tested client wrapper is a reusable building block for larger AI applications. Keeping transport replaceable and simulation visible lets learners practice integration behavior now, then connect a real service later without conflating deterministic tests with live model-quality evidence.",
     "example": {
       "code": "response={\"text\":\"one two\",\"usage\":2,\"simulated\":True}\nevent={\"event\":\"generation_complete\",\"usage\":response[\"usage\"],\"simulated\":response[\"simulated\"]}\nprint(event)\n# Success events expose usage and simulation status, not private text.",

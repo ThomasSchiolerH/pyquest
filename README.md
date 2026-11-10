@@ -42,6 +42,7 @@ Vite derives the production base from `GITHUB_REPOSITORY`, defaulting to `/pyque
 - Five lesson steps: explanation, worked example, interactive activity, real coding, reflection.
 - Choice, true/false, output prediction, fill-in, ordering, matching, debugging, function completion, independent coding, visual explorations, checkpoints, and cumulative projects.
 - CodeMirror Python editor; genuine stdout, tracebacks, tests, hints, reference solutions after an attempt, reset, and saved drafts.
+- Async code and tests support top-level `await`. Use `await your_function()` in PyQuest; reserve `asyncio.run(main())` for a standalone local script. The worker awaits coroutine execution directly, without WebAssembly stack switching.
 - A fresh Web Worker runs each attempt. Loading has a 120-second limit; execution has a separate 10-second limit. Timeout/cancellation terminates the worker. Outputs are capped at 20,000 characters.
 - Correct activity answers and all tests on the current code are required for completion. XP is awarded once per lesson. Repeated reviews cannot farm XP.
 - Local calendar-day streaks, daily goals, levels, achievements, weekly activity, bookmarks, history, and JSON backup import/export.
